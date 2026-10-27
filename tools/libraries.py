@@ -78,7 +78,7 @@ def replace_manifest(text: str, requirements: list[str]) -> str:
     kept = [r for r in cast(list[str], data["requirements"]) if _name(r) not in given]
     data["requirements"] = [*requirements, *kept]
     indent = re.search(r'^( +)"', text, re.MULTILINE)
-    return json.dumps(data, indent=len(indent.group(1)) if indent else 2) + "\n"
+    return json.dumps(data, indent=len(indent.group(1)) if indent else 2, ensure_ascii=False) + "\n"
 
 
 def main(arguments: list[str]) -> None:

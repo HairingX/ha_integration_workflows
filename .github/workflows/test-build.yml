@@ -106,6 +106,7 @@ jobs:
         uses: ./.ha_integration_workflows/actions/tests
         with:
           branch: ${{ github.ref_name }}
+          template-check: "false"
 
   hassfest:
     name: Hassfest
@@ -180,7 +181,8 @@ jobs:
           mapfile -t libraries < "$RUNNER_TEMP/libraries"
           python "$TOOLS/release_version.py" write "$VERSION" "$integration/manifest.json"
           python "$TOOLS/libraries.py" manifest "$integration/manifest.json" "${libraries[@]}"
-          changed=$(git status --porcelain --untracked-files=no)
+          # Only the manifest changed, and nothing untracked is where the zip is built from.
+          changed=$(git status --porcelain -- "$integration")
           if [[ "$changed" != " M $integration/manifest.json" ]]; then
             echo "::error::Setting the version changed something else, or nothing:"
             echo "$changed"

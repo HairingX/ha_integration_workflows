@@ -77,3 +77,9 @@ def test_the_manifest_requires_the_branch_library_and_keeps_its_indentation() ->
 def test_without_branch_libraries_the_manifest_stays_byte_for_byte() -> None:
     manifest = '{\n  "domain": "demo",\n  "requirements": ["device_lib==1.0.0"]\n}'
     assert replace_manifest(manifest, []) == manifest
+
+
+def test_the_manifest_keeps_its_letters() -> None:
+    manifest = json.dumps({"name": "Dørklokke", "requirements": ["device_lib==1.0.0"]}, indent=2)
+    branch = "device_lib @ https://github.com/Owner/device_lib/archive/abc.tar.gz"
+    assert '"Dørklokke"' in replace_manifest(manifest, [branch])

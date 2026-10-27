@@ -75,3 +75,10 @@ def test_the_shared_template_is_complete() -> None:
         ".github/workflows/tests.yml",
         ".github/workflows/validate.yml",
     }
+
+
+def test_sync_refuses_a_section_with_one_marker(tmp_path: Path, template: Path) -> None:
+    root = _repository(tmp_path / "repository")
+    (root / "CLAUDE.md").write_text(f"# Own\n\n{BEGIN}\nhalf a section\n", "utf-8")
+    with pytest.raises(SystemExit, match="only one of the markers"):
+        sync(root, template)

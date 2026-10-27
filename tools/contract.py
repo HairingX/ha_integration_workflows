@@ -95,10 +95,11 @@ def check_requirements(
 
     A library installed from a branch is no release, so its pin is not checked.
     """
+    texts = [line.split("#", 1)[0].strip() for line in pinned]
     pins = {
-        canonicalize_name(Requirement(line).name): line.strip()
-        for line in pinned
-        if line.strip() and not line.lstrip().startswith(("#", "-"))
+        canonicalize_name(Requirement(text).name): text
+        for text in texts
+        if text and not text.startswith("-") and "@" not in text
     }
     for text in requirements:
         requirement = Requirement(text)

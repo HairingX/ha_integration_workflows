@@ -12,6 +12,13 @@ inputs:
       their branch of this name, where they have one; empty or main takes what the manifest pins.
     required: false
     default: ""
+  template-check:
+    description: >-
+      Whether to check that the shared files agree with the template. Release and Test build
+      leave it out: a change to the template must not stop a release before every integration is
+      synced, and pull requests check it.
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -60,5 +67,6 @@ runs:
       run: python "$GITHUB_ACTION_PATH/../../tools/contract.py" .
 
     - name: Check that the shared files agree with the template
+      if: inputs.template-check == 'true'
       shell: bash
       run: python "$GITHUB_ACTION_PATH/../../tools/template.py" check .

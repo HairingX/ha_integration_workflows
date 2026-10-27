@@ -68,6 +68,14 @@ every requirement is pinned with `==`, installed at that version and pinned the 
 every rule hassfest's `ALL_RULES` lists, with a comment for each rule not done; every
 translation holds English's keys.
 
+Release and Test build run the same action without the template check: a change to the
+template must not stop an urgent release before every integration is synced; pull requests and
+pushes still check it, so a repository that differs cannot merge.
+
+A library taken from its branch replaces its pin, rather than being installed over it. When a
+released library pins another one, a branch of only the other one may then not resolve: give the
+first library a branch of the same name too.
+
 ## Facts relied on, and where they were checked
 
 - `job.workflow_repository` and `job.workflow_sha`: GitHub's contexts reference. actionlint

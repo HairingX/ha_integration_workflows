@@ -78,7 +78,12 @@ def known_versions(lines: list[str]) -> list[Version]:
     versions: list[Version] = []
     for line in lines:
         version = _parse(line)
-        if version is None or version.dev is not None or version.post is not None:
+        if (
+            version is None
+            or len(version.release) != 3
+            or version.dev is not None
+            or version.post is not None
+        ):
             continue
         if version.pre is not None and version.pre[0] != "rc":
             continue

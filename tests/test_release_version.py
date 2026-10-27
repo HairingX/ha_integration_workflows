@@ -180,6 +180,9 @@ class TestTestBuildTags(unittest.TestCase):
             _next(RELEASE_CANDIDATE, "v0.3.0", ["v0.3.0rc1", "v0.3.0b4"]), "0.3.0rc2"
         )
 
+    def test_a_major_version_tag_names_no_release(self) -> None:
+        self.assertEqual(known_versions(["v1", "v1.2", "v1.0.0"]), [Version("1.0.0")])
+
     def test_tags_that_name_no_release_are_skipped(self) -> None:
         self.assertEqual(
             known_versions(

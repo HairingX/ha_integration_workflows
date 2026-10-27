@@ -163,3 +163,8 @@ def test_a_repository_without_a_quality_scale_is_reported(
     errors = check(root)
     assert errors[0] == "demo/quality_scale.yaml is missing"
     assert len(errors) == 1 + len(QUALITY_SCALE_RULES)
+
+
+def test_a_pin_with_a_comment_is_read_without_it() -> None:
+    pinned = ["lib==1.2.0  # the manifest's", "other @ https://example.invalid/x.tar.gz"]
+    assert list(check_requirements(["lib==1.2.0"], pinned, {"lib": "1.2.0"})) == []

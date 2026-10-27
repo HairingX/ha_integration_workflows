@@ -89,6 +89,8 @@ def sync(root: Path, template: Path = TEMPLATE) -> None:
     text = claude.read_text("utf-8") if claude.is_file() else ""
     found = section(text)
     shared = shared_section(template)
+    if found is None and (BEGIN in text or END in text):
+        sys.exit(f"::error::{SECTION} has only one of the markers {BEGIN!r} and {END!r}; fix it by hand")
     if found is None:
         text = f"{text.rstrip()}\n\n{shared}\n" if text.strip() else f"{shared}\n"
     else:
