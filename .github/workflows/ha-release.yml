@@ -28,7 +28,8 @@ on:
 permissions: {}
 
 env:
-  TOOLS: .ha_integration_workflows/tools
+  COMMON_TOOLS: .workflows/common/tools
+  HA_TOOLS: .workflows/ha/tools
 
 # The shell given explicitly, so GitHub runs every step with pipefail.
 defaults:
@@ -74,7 +75,7 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: .ha_integration_workflows
+          path: .workflows
           persist-credentials: false
 
       - name: Record the commit to release
@@ -111,7 +112,7 @@ jobs:
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq '.[] | select(.draft) | @json' > "$RUNNER_TEMP/drafts"
-          python "$TOOLS/release_version.py" draft "$RUNNER_TEMP/drafts" >> "$GITHUB_OUTPUT"
+          python "$COMMON_TOOLS/release_version.py" draft "$RUNNER_TEMP/drafts" >> "$GITHUB_OUTPUT"
           grep '^draft_tag=' "$GITHUB_OUTPUT"
 
       - name: Work out the version
@@ -123,7 +124,7 @@ jobs:
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name' \
             > "$RUNNER_TEMP/tags"
-          python "$TOOLS/release_version.py" next "$RELEASE" "$DRAFT_TAG" "$OVERRIDE" \
+          python "$COMMON_TOOLS/release_version.py" next "$RELEASE" "$DRAFT_TAG" "$OVERRIDE" \
             "$RUNNER_TEMP/tags" | tee -a "$GITHUB_OUTPUT"
 
       - name: Refuse a draft that does not describe the commit
@@ -151,7 +152,7 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/commits/$sha/pulls" \
               --jq '.[] | select(.merged_at != null) | .number' >> "$RUNNER_TEMP/merged"
           done < "$RUNNER_TEMP/commits"
-          python "$TOOLS/release_version.py" changes "$SINCE" "$RUNNER_TEMP/merged"
+          python "$COMMON_TOOLS/release_version.py" changes "$SINCE" "$RUNNER_TEMP/merged"
 
   test:
     name: Tests and type check
@@ -171,11 +172,11 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: .ha_integration_workflows
+          path: .workflows
           persist-credentials: false
 
       - name: Tests and type check
-        uses: ./.ha_integration_workflows/actions/tests
+        uses: ./.workflows/ha/actions/tests
         with:
           branch: main
           template-check: "false"
@@ -237,7 +238,7 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: .ha_integration_workflows
+          path: .workflows
           persist-credentials: false
 
       - name: Set up Python
@@ -250,8 +251,8 @@ jobs:
 
       - name: Build the zip, with the manifest's version set
         run: |
-          integration=$(python "$TOOLS/repository.py" integration .)
-          python "$TOOLS/release_version.py" write "$VERSION" "$integration/manifest.json"
+          integration=$(python "$HA_TOOLS/repository.py" integration .)
+          python "$COMMON_TOOLS/release_version.py" write "$VERSION" "$integration/manifest.json"
           # Only the manifest changed, and nothing untracked is where the zip is built from.
           changed=$(git status --porcelain -- "$integration")
           if [[ "$changed" != " M $integration/manifest.json" ]]; then
@@ -259,8 +260,8 @@ jobs:
             echo "$changed"
             exit 1
           fi
-          zip=$(python "$TOOLS/repository.py" zip .)
-          python "$TOOLS/release_zip.py" "$integration" "$RUNNER_TEMP/$zip" "$VERSION"
+          zip=$(python "$HA_TOOLS/repository.py" zip .)
+          python "$HA_TOOLS/release_zip.py" "$integration" "$RUNNER_TEMP/$zip" "$VERSION"
           echo "ZIP=$RUNNER_TEMP/$zip" >> "$GITHUB_ENV"
 
       - name: Tag the tested commit
@@ -312,7 +313,7 @@ jobs:
           flags=()
           if [[ "$PRERELEASE" == "false" && -n "$DRAFT_ID" ]]; then
             # A final release carries the draft's notes, as approved before running this.
-            python "$TOOLS/release_version.py" final-notes "$PREVIOUS_TAG" "$DRAFT_BODY" \
+            python "$COMMON_TOOLS/release_version.py" final-notes "$PREVIOUS_TAG" "$DRAFT_BODY" \
               "$RUNNER_TEMP/notes.md"
             flags+=(--notes-file "$RUNNER_TEMP/notes.md")
           else

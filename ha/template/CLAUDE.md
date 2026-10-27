@@ -1,11 +1,11 @@
 ## Shared by every integration
 
 This section, the workflows and the release tools are the same in every Home Assistant
-integration of the owner. They come from `HairingX/ha_integration_workflows`: the workflows in
-`.github/` are copies of its template, which call its reusable workflows and actions at `@v1`,
-and this section is a copy of its `template/CLAUDE.md`. The tests check that the copies agree;
-a change to any of them is made there, released, and synced into every repository with its
-`tools/template.py sync`. What is this repository's own is above this section.
+integration of the owner. They come from `HairingX/workflows`: the workflows in `.github/` are
+copies of its template, which call its reusable workflows and actions at `@v2`, and this section
+is a copy of its `ha/template/CLAUDE.md`. The tests check that the copies agree; a change to any
+of them is made there, released, and synced into every repository with its
+`ha/tools/template.py sync`. What is this repository's own is above this section.
 
 ## Comments and docstrings
 

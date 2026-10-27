@@ -16,7 +16,8 @@ on:
 permissions: {}
 
 env:
-  TOOLS: .ha_integration_workflows/tools
+  COMMON_TOOLS: .workflows/common/tools
+  HA_TOOLS: .workflows/ha/tools
 
 # The shell given explicitly, so GitHub runs every step with pipefail.
 defaults:
@@ -53,7 +54,7 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: .ha_integration_workflows
+          path: .workflows
           persist-credentials: false
 
       - name: Record the commit to build
@@ -74,11 +75,11 @@ jobs:
           # The version the next release gets, as a test build of it.
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq '.[] | select(.draft) | @json' > "$RUNNER_TEMP/drafts"
-          draft=$(python "$TOOLS/release_version.py" draft "$RUNNER_TEMP/drafts" \
+          draft=$(python "$COMMON_TOOLS/release_version.py" draft "$RUNNER_TEMP/drafts" \
             | sed -n 's/^draft_tag=//p')
           gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name' \
             > "$RUNNER_TEMP/tags"
-          python "$TOOLS/release_version.py" test-build "$draft" "$RUNNER_TEMP/tags" \
+          python "$COMMON_TOOLS/release_version.py" test-build "$draft" "$RUNNER_TEMP/tags" \
             | tee -a "$GITHUB_OUTPUT"
 
   test:
@@ -99,11 +100,11 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: .ha_integration_workflows
+          path: .workflows
           persist-credentials: false
 
       - name: Tests and type check
-        uses: ./.ha_integration_workflows/actions/tests
+        uses: ./.workflows/ha/actions/tests
         with:
           branch: ${{ github.ref_name }}
           template-check: "false"
@@ -163,7 +164,7 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: .ha_integration_workflows
+          path: .workflows
           persist-credentials: false
 
       - name: Set up Python
@@ -176,11 +177,11 @@ jobs:
 
       - name: Build the zip, with the version and the libraries set in the manifest
         run: |
-          integration=$(python "$TOOLS/repository.py" integration .)
-          python "$TOOLS/libraries.py" branch . "$OWNER" "$BRANCH" > "$RUNNER_TEMP/libraries"
+          integration=$(python "$HA_TOOLS/repository.py" integration .)
+          python "$HA_TOOLS/libraries.py" branch . "$OWNER" "$BRANCH" > "$RUNNER_TEMP/libraries"
           mapfile -t libraries < "$RUNNER_TEMP/libraries"
-          python "$TOOLS/release_version.py" write "$VERSION" "$integration/manifest.json"
-          python "$TOOLS/libraries.py" manifest "$integration/manifest.json" "${libraries[@]}"
+          python "$COMMON_TOOLS/release_version.py" write "$VERSION" "$integration/manifest.json"
+          python "$HA_TOOLS/libraries.py" manifest "$integration/manifest.json" "${libraries[@]}"
           # Only the manifest changed, and nothing untracked is where the zip is built from.
           changed=$(git status --porcelain -- "$integration")
           if [[ "$changed" != " M $integration/manifest.json" ]]; then
@@ -188,8 +189,8 @@ jobs:
             echo "$changed"
             exit 1
           fi
-          zip=$(python "$TOOLS/repository.py" zip .)
-          python "$TOOLS/release_zip.py" "$integration" "$RUNNER_TEMP/$zip" "$VERSION"
+          zip=$(python "$HA_TOOLS/repository.py" zip .)
+          python "$HA_TOOLS/release_zip.py" "$integration" "$RUNNER_TEMP/$zip" "$VERSION"
           echo "ZIP=$RUNNER_TEMP/$zip" >> "$GITHUB_ENV"
 
       # The cleanup of a deleted branch may have run while this was being tested.
@@ -221,7 +222,7 @@ jobs:
       - name: Replace the branch's previous test builds
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq "$(cat "$TOOLS/branch_test_builds.jq")" > "$RUNNER_TEMP/old"
+            --jq "$(cat "$HA_TOOLS/branch_test_builds.jq")" > "$RUNNER_TEMP/old"
           while read -r old; do
             echo "Removing $old"
             if ! gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes; then

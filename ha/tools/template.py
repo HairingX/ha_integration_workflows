@@ -1,13 +1,13 @@
-"""The files every integration's repository shares, word for word, with this template.
+"""The files every integration's repository shares, word for word, with the templates.
 
     template.py check ROOT   fails with one error per file of the repository at ROOT that
                              differs from the template
     template.py sync ROOT    makes the repository at ROOT agree with the template
 
-Every file under template/ is copied as it is, except CLAUDE.md: the repository's CLAUDE.md holds
-it between two marker lines, after the repository's own conventions. The repository's workflows
-are exactly the template's, and it keeps no workflow scripts, actions or Release Drafter
-configuration of its own: they all come from this repository.
+Every file under common/template/ and ha/template/ is copied as it is, except ha/template/CLAUDE.md:
+the repository's CLAUDE.md holds it between two marker lines, after the repository's own
+conventions. The repository's workflows are exactly the template's, and it keeps no workflow
+scripts, actions or Release Drafter configuration of its own: they all come from this repository.
 """
 
 import shutil
@@ -16,21 +16,37 @@ from collections.abc import Iterator
 from pathlib import Path
 
 TEMPLATE = Path(__file__).parents[1] / "template"
+COMMON = Path(__file__).parents[2] / "common" / "template"
+"""The files every repository of the owner shares, whatever its kind."""
 SECTION = "CLAUDE.md"
-BEGIN = "<!-- BEGIN ha_integration_workflows: shared by every integration; edit it there -->"
-END = "<!-- END ha_integration_workflows -->"
+BEGIN = "<!-- BEGIN HairingX/workflows: shared by every integration; edit it there -->"
+END = "<!-- END HairingX/workflows -->"
+PREVIOUS_MARKERS = (
+    ("<!-- BEGIN ha_integration_workflows: shared by every integration; edit it there -->", BEGIN),
+    ("<!-- END ha_integration_workflows -->", END),
+)
+"""The markers of the repository's former name, which sync replaces."""
 NOT_OWN = (".github/scripts", ".github/actions", ".github/release-drafter.yml")
 """What the repository must not have: it comes from this repository, where Release Drafter's
 configuration is read from too."""
 
 
-def files(template: Path = TEMPLATE) -> list[str]:
-    """The template's files, as paths relative to it, but for the CLAUDE.md section."""
-    return sorted(
-        path.relative_to(template).as_posix()
-        for path in template.rglob("*")
-        if path.is_file() and path.relative_to(template).as_posix() != SECTION
-    )
+def sources(template: Path = TEMPLATE, common: Path = COMMON) -> dict[str, Path]:
+    """Each file the repository keeps, by its path in the repository, and where it comes from."""
+    found: dict[str, Path] = {}
+    for root in (common, template):
+        for path in root.rglob("*"):
+            name = path.relative_to(root).as_posix()
+            if path.is_file() and not (root == template and name == SECTION):
+                if name in found:
+                    sys.exit(f"::error::{name} is in both {common} and {template}")
+                found[name] = path
+    return dict(sorted(found.items()))
+
+
+def files(template: Path = TEMPLATE, common: Path = COMMON) -> list[str]:
+    """The files the repository keeps, as paths relative to it, but for the CLAUDE.md section."""
+    return list(sources(template, common))
 
 
 def section(text: str) -> str | None:
@@ -47,20 +63,21 @@ def shared_section(template: Path = TEMPLATE) -> str:
     return f"{BEGIN}\n{(template / SECTION).read_text('utf-8').strip()}\n{END}"
 
 
-def differences(root: Path, template: Path = TEMPLATE) -> Iterator[str]:
+def differences(root: Path, template: Path = TEMPLATE, common: Path = COMMON) -> Iterator[str]:
     """Every way the repository at `root` differs from the template."""
-    for name in files(template):
+    shared = sources(template, common)
+    for name, source in shared.items():
         own = root / name
         if not own.is_file():
             yield f"{name} is missing; the template has it"
-        elif own.read_bytes() != (template / name).read_bytes():
+        elif own.read_bytes() != source.read_bytes():
             yield f"{name} differs from the template's"
     workflows = {f".github/workflows/{path.name}" for path in (root / ".github/workflows").glob("*")}
-    for name in sorted(workflows - set(files(template))):
+    for name in sorted(workflows - set(shared)):
         yield f"{name} is no workflow of the template; workflows are shared, not added per repository"
     for name in NOT_OWN:
         if (root / name).exists():
-            yield f"{name} must not exist; it comes from ha_integration_workflows"
+            yield f"{name} must not exist; it comes from HairingX/workflows"
     claude = root / SECTION
     found = section(claude.read_text("utf-8")) if claude.is_file() else None
     if found is None:
@@ -69,13 +86,14 @@ def differences(root: Path, template: Path = TEMPLATE) -> Iterator[str]:
         yield f"the shared section of {SECTION} differs from the template's"
 
 
-def sync(root: Path, template: Path = TEMPLATE) -> None:
+def sync(root: Path, template: Path = TEMPLATE, common: Path = COMMON) -> None:
     """Make the repository at `root` agree with the template."""
-    names = files(template)
-    for name in names:
+    shared = sources(template, common)
+    names = list(shared)
+    for name, source in shared.items():
         target = root / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(template / name, target)
+        shutil.copyfile(source, target)
     for path in (root / ".github/workflows").glob("*"):
         if f".github/workflows/{path.name}" not in names:
             path.unlink()
@@ -87,6 +105,8 @@ def sync(root: Path, template: Path = TEMPLATE) -> None:
             path.unlink()
     claude = root / SECTION
     text = claude.read_text("utf-8") if claude.is_file() else ""
+    for previous, current in PREVIOUS_MARKERS:
+        text = text.replace(previous, current)
     found = section(text)
     shared = shared_section(template)
     if found is None and (BEGIN in text or END in text):
@@ -106,7 +126,7 @@ def main(arguments: list[str]) -> None:
             for difference in found:
                 print(f"::error::{difference}")
             if found:
-                print("Run tools/template.py sync from ha_integration_workflows to bring it back.")
+                print("Run ha/tools/template.py sync from HairingX/workflows to bring it back.")
                 sys.exit(1)
             print("The repository agrees with the template.")
         case ["sync", root]:

@@ -26,7 +26,7 @@ jobs:
       - name: Draft the release
         uses: release-drafter/release-drafter@v7
         with:
-          config-name: ${{ job.workflow_repository }}:/tools/release-drafter.yml@${{ job.workflow_sha }}
+          config-name: ${{ job.workflow_repository }}:/common/release-drafter.yml@${{ job.workflow_sha }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
@@ -41,6 +41,6 @@ jobs:
       - name: Apply labels
         uses: release-drafter/release-drafter/autolabeler@v7
         with:
-          config-name: ${{ job.workflow_repository }}:/tools/release-drafter.yml@${{ job.workflow_sha }}
+          config-name: ${{ job.workflow_repository }}:/common/release-drafter.yml@${{ job.workflow_sha }}
         env:
           GITHUB_TOKEN: ${{ github.token }}

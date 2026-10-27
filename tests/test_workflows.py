@@ -12,11 +12,13 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).parents[1]
-WORKFLOWS = sorted([*(ROOT / ".github/workflows").glob("*.yml"), *(ROOT / "template/.github/workflows").glob("*.yml")])
-ACTIONS = sorted((ROOT / "actions").glob("*/action.yml"))
-CALLERS = sorted((ROOT / "template/.github/workflows").glob("*.yml"))
-BRANCH_TEST_BUILDS = ROOT / "tools" / "branch_test_builds.jq"
-OWN = re.compile(r"uses: HairingX/ha_integration_workflows/([^@\s]+)@(\S+)")
+WORKFLOWS = sorted([*(ROOT / ".github/workflows").glob("*.yml"), *(ROOT / "ha/template/.github/workflows").glob("*.yml")])
+ACTIONS = sorted((ROOT / "ha/actions").glob("*/action.yml"))
+CALLERS = sorted((ROOT / "ha/template/.github/workflows").glob("*.yml"))
+BRANCH_TEST_BUILDS = ROOT / "ha" / "tools" / "branch_test_builds.jq"
+OWN = re.compile(r"uses: HairingX/workflows/([^@\s]+)@(\S+)")
+MAJOR = "v2"
+"""The major version the callers use, which Publish moves."""
 
 OWN_WORKFLOWS = {"ci.yml", "publish.yml"}
 """This repository's own workflows, which no integration calls."""
@@ -63,7 +65,7 @@ def test_every_step_of_an_action_runs_bash_with_pipefail(action: Path) -> None:
 @pytest.mark.parametrize("caller", CALLERS, ids=_ids(CALLERS))
 def test_a_caller_uses_this_repository_at_its_major_version_and_only_what_exists(caller: Path) -> None:
     for path, ref in OWN.findall(caller.read_text("utf-8")):
-        assert ref == "v1"
+        assert ref == MAJOR
         assert (ROOT / path).exists(), path
 
 
@@ -75,14 +77,18 @@ def test_the_reusable_workflows_are_called_by_their_callers() -> None:
         if "workflow_call" in workflow.read_text("utf-8") and workflow.name not in OWN_WORKFLOWS
     }
     assert reusable <= called
-    assert {f"actions/{action.parent.name}" for action in ACTIONS} <= called
+    assert {f"ha/actions/{action.parent.name}" for action in ACTIONS} <= called
+
+
+def test_the_shared_conventions_name_the_major_version_the_callers_use() -> None:
+    assert f"at `@{MAJOR}`" in (ROOT / "ha/template/CLAUDE.md").read_text("utf-8")
 
 
 @pytest.mark.parametrize("caller", CALLERS, ids=_ids(CALLERS))
 def test_the_checks_a_ruleset_requires_keep_their_names(caller: Path) -> None:
     """The ruleset requires checks by name; a job called through a reusable workflow gets a
     prefixed name, so a required check is a job of the caller itself."""
-    ruleset = json.loads((ROOT / "template/.github/rulesets/main.json").read_text("utf-8"))
+    ruleset = json.loads((ROOT / "ha/template/.github/rulesets/main.json").read_text("utf-8"))
     rule = next(rule for rule in ruleset["rules"] if rule["type"] == "required_status_checks")
     required = {check["context"] for check in rule["parameters"]["required_status_checks"]}
     names = {

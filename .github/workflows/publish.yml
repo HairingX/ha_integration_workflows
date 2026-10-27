@@ -65,7 +65,7 @@ jobs:
           python -m pip install packaging==26.3
           gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name' \
             > "$RUNNER_TEMP/tags"
-          python tools/release_version.py next "final release" "" "$VERSION" "$RUNNER_TEMP/tags" \
+          python common/tools/release_version.py next "final release" "" "$VERSION" "$RUNNER_TEMP/tags" \
             | grep '^tag=' | tee -a "$GITHUB_OUTPUT"
           echo "major=v${VERSION%%.*}" | tee -a "$GITHUB_OUTPUT"
 
