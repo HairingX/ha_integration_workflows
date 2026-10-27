@@ -172,6 +172,8 @@ def check_standard(pyright: Mapping[str, Any], percent: int, reason: str | None)
         return
     if pyright.get("typeCheckingMode") != "strict":
         yield "pyproject.toml must set [tool.pyright] typeCheckingMode to \"strict\""
+    if pyright.get("ignore"):
+        yield "pyproject.toml must leave no file unchecked in [tool.pyright] ignore"
     if percent != 100:
         yield f"the tests must cover every line, not {percent}%"
 

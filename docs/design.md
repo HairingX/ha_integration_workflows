@@ -80,9 +80,10 @@ first library a branch of the same name too.
 
 An integration far from the standard - Aula, whose code was written before it - is not left red
 while it gets there. `[tool.ha-integration-workflows] transition` in its `pyproject.toml` says
-why; `coverage` then sets the percentage its tests must reach, and its pyright configuration may
-hold only the modules listed in `strict` to strict. The contract warns on every run while a
-transition lasts, and refuses a lower coverage or a pyright mode other than strict without one.
+why; `coverage` then sets the percentage its tests must reach, and pyright - strict - may leave
+the files listed in its `ignore` unchecked. The contract warns on every run while a transition
+lasts, and refuses a lower coverage, a pyright mode other than strict, or files left unchecked
+without one.
 That the floor only rises is a rule of review, not a check.
 
 ## Facts relied on, and where they were checked

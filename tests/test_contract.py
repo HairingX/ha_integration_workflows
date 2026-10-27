@@ -180,5 +180,11 @@ def test_the_whole_standard_holds_without_a_transition() -> None:
     ]
 
 
+def test_no_file_is_left_unchecked_without_a_transition() -> None:
+    assert list(check_standard({"typeCheckingMode": "strict", "ignore": ["a.py"]}, 100, None)) == [
+        "pyproject.toml must leave no file unchecked in [tool.pyright] ignore"
+    ]
+
+
 def test_a_transition_relaxes_the_standard() -> None:
     assert list(check_standard({"typeCheckingMode": "standard"}, 29, "Typed module by module.")) == []
