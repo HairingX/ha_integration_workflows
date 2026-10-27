@@ -6,29 +6,33 @@ of them keeps a copy of. How and why it is built as it is: `docs/design.md`.
 
 ## What lives here
 
-- `common/`: what every kind of repository shares. `common/tools/release_version.py` holds the
-  version rules, `common/release-drafter.yml` Release Drafter's configuration, and
-  `common/template/` the files every repository keeps word for word: the release-notes
-  categories and the branch-names ruleset.
+- `common/`: what every kind of repository shares.
+  - `common/tools/`: the version rules (`release_version.py`), what a repository says about
+    itself under `[tool.hairingx-workflows]` in its `pyproject.toml` (`settings.py`), the
+    libraries taken from a branch (`libraries.py`), and the template check and sync
+    (`template.py check|sync KIND ROOT`).
+  - `common/release-drafter.yml`: Release Drafter's configuration.
+  - `common/template/`: the files every repository keeps word for word: the release-notes
+    categories, the branch-names ruleset, and the Release Drafter and inactive-issues workflows.
 - `ha/`: the Home Assistant integrations'.
   - `ha/actions/tests`, `ha/actions/libraries-released`: composite actions, used by the
     integrations' workflows at `@v2` and by the reusable workflows from their own commit.
-  - `ha/tools/`: the scripts the workflows run. They read what differs between integrations
-    from the integration's own files - the domain from `custom_components/`, the zip from
-    `hacs.json`, the libraries from `[tool.ha-integration-workflows]` in `pyproject.toml` - and
-    never name one.
-  - `ha/template/`: the files every integration keeps word for word besides the common ones:
-    its workflows, which only call the reusable ones, its Dependabot and main-branch ruleset,
-    and `ha/template/CLAUDE.md`, the shared section of its CLAUDE.md. The integrations' tests
-    check their copies with `ha/tools/template.py check`; `ha/tools/template.py sync
-    <repository>` brings one back.
+  - `ha/tools/`: the scripts only integrations need. They read what differs between
+    integrations from the integration's own files - the domain from `custom_components/`, the
+    zip from `hacs.json` - and never name one.
+  - `ha/template/`: the files every integration keeps besides the common ones, and
+    `ha/template/CLAUDE.md`, the shared section of its CLAUDE.md.
+- `python/`: the Python libraries', laid out the same: `python/actions/`, `python/tools/` (the
+  package's names, and the library's contract) and `python/template/`. A library publishes to
+  PyPI from its own Release workflow, as PyPI's trusted publishing takes no reusable workflow.
 - `.github/workflows/`: the reusable workflows, prefixed by the kind they serve -
-  `ha-release.yml`, `ha-test-build.yml`, `ha-test-build-cleanup.yml` - and `release-drafter.yml`,
-  shared by every kind. GitHub finds a reusable workflow only directly in that directory. Each
-  checks out this repository at its own commit (`job.workflow_repository`, `job.workflow_sha`)
-  for its tools. `ci.yml` and `publish.yml` are this repository's own.
-- `tests/`: `tests/common/`, `tests/ha/`, and `tests/test_workflows.py` for every workflow and
-  action.
+  `ha-release.yml`, `ha-test-build.yml`, `ha-test-build-cleanup.yml`, `python-release.yml`,
+  `python-github-release.yml` - and `release-drafter.yml`, shared by every kind. GitHub finds a
+  reusable workflow only directly in that directory. Each checks out this repository at its own
+  commit (`job.workflow_repository`, `job.workflow_sha`) for its tools. `ci.yml` and
+  `publish.yml` are this repository's own.
+- `tests/`: `tests/common/`, `tests/ha/`, `tests/python/`, and `tests/test_workflows.py` for
+  every workflow and action.
 
 ## Changing anything
 
@@ -38,10 +42,11 @@ of them keeps a copy of. How and why it is built as it is: `docs/design.md`.
    moves the major tag to it, so every repository uses it from its next run. There is one
    version for every kind.
 3. A change to a template turns the tests of every repository that keeps it red until its
-   copies are synced: open a pull request in each with the template's `sync`. A change the
-   copies must follow at the same moment - an input added to a reusable workflow, or a path
-   moved - is a new major version, published while the repositories stay at the major before
-   until each is synced.
+   copies are synced: open a pull request in each with `common/tools/template.py sync KIND`. A
+   change the copies must follow at the same moment - an input added to a reusable workflow, or
+   a path moved - is a new major version, published while the repositories stay at the major
+   before until each is synced.
 
-The comments, docstrings, tests and branch conventions are the integrations' own, in
-`ha/template/CLAUDE.md`. Python 3.14; pyright strict reports 0 errors, with no `# type: ignore`.
+The comments, docstrings, tests and branch conventions are the repositories' own, in
+`ha/template/CLAUDE.md` and `python/template/CLAUDE.md`. Python 3.14; pyright strict reports 0
+errors, with no `# type: ignore`.

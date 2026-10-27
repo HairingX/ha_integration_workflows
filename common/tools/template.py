@@ -1,13 +1,14 @@
-"""The files every integration's repository shares, word for word, with the templates.
+"""The files every repository of a kind shares, word for word, with the templates.
 
-    template.py check ROOT   fails with one error per file of the repository at ROOT that
-                             differs from the template
-    template.py sync ROOT    makes the repository at ROOT agree with the template
+    template.py check KIND ROOT   fails with one error per file of the repository at ROOT that
+                                  differs from the template of KIND ("ha" or "python")
+    template.py sync KIND ROOT    makes the repository at ROOT agree with that template
 
-Every file under common/template/ and ha/template/ is copied as it is, except ha/template/CLAUDE.md:
-the repository's CLAUDE.md holds it between two marker lines, after the repository's own
-conventions. The repository's workflows are exactly the template's, and it keeps no workflow
-scripts, actions or Release Drafter configuration of its own: they all come from this repository.
+Every file under common/template/ and <KIND>/template/ is copied as it is, except
+<KIND>/template/CLAUDE.md: the repository's CLAUDE.md holds it between two marker lines, after the
+repository's own conventions. The repository's workflows are exactly the template's, and it keeps
+no workflow scripts, actions or Release Drafter configuration of its own: they all come from this
+repository.
 """
 
 import shutil
@@ -15,15 +16,18 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-TEMPLATE = Path(__file__).parents[1] / "template"
-COMMON = Path(__file__).parents[2] / "common" / "template"
+ROOT = Path(__file__).resolve().parents[2]
+COMMON = ROOT / "common" / "template"
 """The files every repository of the owner shares, whatever its kind."""
+TEMPLATES = {"ha": ROOT / "ha" / "template", "python": ROOT / "python" / "template"}
+"""The files each kind of repository shares besides the common ones."""
 SECTION = "CLAUDE.md"
-BEGIN = "<!-- BEGIN HairingX/workflows: shared by every integration; edit it there -->"
+BEGIN = "<!-- BEGIN HairingX/workflows: shared; edit it there -->"
 END = "<!-- END HairingX/workflows -->"
 PREVIOUS_MARKERS = (
     ("<!-- BEGIN ha_integration_workflows: shared by every integration; edit it there -->", BEGIN),
     ("<!-- END ha_integration_workflows -->", END),
+    ("<!-- BEGIN HairingX/workflows: shared by every integration; edit it there -->", BEGIN),
 )
 """The markers of the repository's former name, which sync replaces."""
 NOT_OWN = (".github/scripts", ".github/actions", ".github/release-drafter.yml")
@@ -31,7 +35,7 @@ NOT_OWN = (".github/scripts", ".github/actions", ".github/release-drafter.yml")
 configuration is read from too."""
 
 
-def sources(template: Path = TEMPLATE, common: Path = COMMON) -> dict[str, Path]:
+def sources(template: Path, common: Path = COMMON) -> dict[str, Path]:
     """Each file the repository keeps, by its path in the repository, and where it comes from."""
     found: dict[str, Path] = {}
     for root in (common, template):
@@ -44,7 +48,7 @@ def sources(template: Path = TEMPLATE, common: Path = COMMON) -> dict[str, Path]
     return dict(sorted(found.items()))
 
 
-def files(template: Path = TEMPLATE, common: Path = COMMON) -> list[str]:
+def files(template: Path, common: Path = COMMON) -> list[str]:
     """The files the repository keeps, as paths relative to it, but for the CLAUDE.md section."""
     return list(sources(template, common))
 
@@ -58,12 +62,12 @@ def section(text: str) -> str | None:
     return text[start : end + len(END)]
 
 
-def shared_section(template: Path = TEMPLATE) -> str:
+def shared_section(template: Path) -> str:
     """The shared section as the template has it, between its markers."""
     return f"{BEGIN}\n{(template / SECTION).read_text('utf-8').strip()}\n{END}"
 
 
-def differences(root: Path, template: Path = TEMPLATE, common: Path = COMMON) -> Iterator[str]:
+def differences(root: Path, template: Path, common: Path = COMMON) -> Iterator[str]:
     """Every way the repository at `root` differs from the template."""
     shared = sources(template, common)
     for name, source in shared.items():
@@ -86,7 +90,7 @@ def differences(root: Path, template: Path = TEMPLATE, common: Path = COMMON) ->
         yield f"the shared section of {SECTION} differs from the template's"
 
 
-def sync(root: Path, template: Path = TEMPLATE, common: Path = COMMON) -> None:
+def sync(root: Path, template: Path, common: Path = COMMON) -> None:
     """Make the repository at `root` agree with the template."""
     shared = sources(template, common)
     names = list(shared)
@@ -121,16 +125,16 @@ def sync(root: Path, template: Path = TEMPLATE, common: Path = COMMON) -> None:
 def main(arguments: list[str]) -> None:
     """Run the subcommand `arguments` names."""
     match arguments:
-        case ["check", root]:
-            found = list(differences(Path(root)))
+        case ["check", kind, root] if kind in TEMPLATES:
+            found = list(differences(Path(root), TEMPLATES[kind]))
             for difference in found:
                 print(f"::error::{difference}")
             if found:
-                print("Run ha/tools/template.py sync from HairingX/workflows to bring it back.")
+                print(f"Run common/tools/template.py sync {kind} from HairingX/workflows to bring it back.")
                 sys.exit(1)
             print("The repository agrees with the template.")
-        case ["sync", root]:
-            sync(Path(root))
+        case ["sync", kind, root] if kind in TEMPLATES:
+            sync(Path(root), TEMPLATES[kind])
         case _:
             sys.exit(__doc__)
 

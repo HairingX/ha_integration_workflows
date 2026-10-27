@@ -25,7 +25,11 @@ from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
-from repository import coverage, domain, integration, tool, transition
+# The tools every kind of repository shares live beside this kind's own.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "common" / "tools"))
+
+from repository import domain, integration  # noqa: E402
+from settings import check_standard, coverage, tool, transition  # noqa: E402
 
 QUALITY_SCALE_RULES = frozenset({
     # Bronze
@@ -255,18 +259,6 @@ def check_translations(translations: Mapping[str, Mapping[str, Any]]) -> Iterato
             yield f"translations/{language}.json lacks {key}"
         for key in sorted(other - english):
             yield f"translations/{language}.json has {key}, which English does not"
-
-
-def check_standard(pyright: Mapping[str, Any], percent: int, reason: str | None) -> Iterator[str]:
-    """pyright is strict and the tests cover every line, unless a transition says why not yet."""
-    if reason is not None:
-        return
-    if pyright.get("typeCheckingMode") != "strict":
-        yield "pyproject.toml must set [tool.pyright] typeCheckingMode to \"strict\""
-    if pyright.get("ignore"):
-        yield "pyproject.toml must leave no file unchecked in [tool.pyright] ignore"
-    if percent != 100:
-        yield f"the tests must cover every line, not {percent}%"
 
 
 def check(root: Path) -> list[str]:

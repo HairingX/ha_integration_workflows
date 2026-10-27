@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from template import BEGIN, COMMON, END, PREVIOUS_MARKERS, TEMPLATE, differences, files, shared_section, sources, sync
+from template import BEGIN, COMMON, END, PREVIOUS_MARKERS, TEMPLATES, differences, files, shared_section, sources, sync
 
 
 @pytest.fixture
@@ -76,8 +76,8 @@ def test_sync_replaces_an_outdated_section_and_keeps_what_follows(tmp_path: Path
 
 
 def test_the_shared_template_is_complete() -> None:
-    assert (TEMPLATE / "CLAUDE.md").is_file()
-    assert {path for path in files() if path.startswith(".github/workflows/")} == {
+    assert (TEMPLATES["ha"] / "CLAUDE.md").is_file()
+    assert {path for path in files(TEMPLATES["ha"]) if path.startswith(".github/workflows/")} == {
         ".github/workflows/close-inactive-issues.yml",
         ".github/workflows/library-released.yml",
         ".github/workflows/release-drafter.yml",
@@ -105,7 +105,7 @@ def test_a_file_in_both_templates_is_refused(template: Path, common: Path) -> No
 
 def test_sync_replaces_the_section_under_the_former_markers(tmp_path: Path, template: Path, common: Path) -> None:
     root = _repository(tmp_path / "repository")
-    (begin, _), (end, _) = PREVIOUS_MARKERS
+    (begin, _), (end, _), _ = PREVIOUS_MARKERS
     (root / "CLAUDE.md").write_text(f"# Own\n\n{begin}\nold\n{end}\n", "utf-8")
     sync(root, template, common)
     assert (root / "CLAUDE.md").read_text("utf-8") == f"# Own\n\n{shared_section(template)}\n"
@@ -115,4 +115,6 @@ def test_the_common_template_holds_what_every_kind_of_repository_shares() -> Non
     assert sorted(path.relative_to(COMMON).as_posix() for path in COMMON.rglob("*") if path.is_file()) == [
         ".github/release.yml",
         ".github/rulesets/branch-names.json",
+        ".github/workflows/close-inactive-issues.yml",
+        ".github/workflows/release-drafter.yml",
     ]

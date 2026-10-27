@@ -1,0 +1,37 @@
+name: Libraries released and pinned
+description: >-
+  Fails while a library developed alongside the package is taken from a branch of the pull
+  request's name: such a pull request is merged only once the library is released, its version
+  required in pyproject.toml, and its branch deleted. The repository must already be checked out.
+
+inputs:
+  branch:
+    description: The pull request's branch.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: "3.14"
+
+    - name: No library from a branch
+      shell: bash
+      env:
+        BRANCH: ${{ inputs.branch }}
+        OWNER: ${{ github.repository_owner }}
+      run: |
+        python -m pip install packaging==26.3
+        python "$GITHUB_ACTION_PATH/../../../common/tools/libraries.py" branch . "$OWNER" "$BRANCH" \
+          > "$RUNNER_TEMP/unreleased"
+        if [[ -s "$RUNNER_TEMP/unreleased" ]]; then
+          while read -r requirement; do
+            echo "::error::Taken from branch $BRANCH, not a release: $requirement"
+          done < "$RUNNER_TEMP/unreleased"
+          echo "Release the library, require its version in pyproject.toml, and delete its"
+          echo "branch $BRANCH."
+          exit 1
+        fi
+        echo "Every library comes from its release."

@@ -25,7 +25,7 @@ from typing import Any, cast
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
-from repository import libraries
+from settings import libraries
 
 
 def _name(line: str) -> str | None:

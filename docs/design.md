@@ -15,6 +15,12 @@ one repository, with one version:
   Release Drafter's configuration, and the template files every repository keeps
   (`common/template/`: the release-notes categories and the branch-names ruleset).
 - `ha/`: the Home Assistant integrations' actions, tools and template.
+- `python/`: the Python libraries'. A library's Release is the integrations' Release with a
+  package instead of a zip: setuptools-scm works the version out from the tag, so the tag is
+  made before the build and pushed only once the built package says that version. PyPI's
+  trusted publishing takes no reusable workflow (it is bound to the repository's own workflow
+  file), so the library's `release.yml` calls the shared release, uploads to PyPI itself, and
+  calls the shared GitHub release after.
 - `.github/workflows/`: the reusable workflows, prefixed by kind (`ha-release.yml`); GitHub
   finds a reusable workflow only directly in that directory, never in a subdirectory.
 
@@ -51,7 +57,7 @@ GitHub's own mechanism for CI shared between repositories:
 Nothing here names an integration. The domain is the one directory under `custom_components/`,
 which its manifest must name; the zip is `hacs.json`'s `filename`; the libraries developed
 alongside it, taken from their branch of the same name on a development branch, are listed in
-install order under `[tool.ha-integration-workflows]` in `pyproject.toml`. Everything else -
+install order under `[tool.hairingx-workflows]` in `pyproject.toml`. Everything else -
 code, tests, manifest pins, `requirements-test.txt`, `quality_scale.yaml`, README, the top of
 CLAUDE.md - is the integration's own.
 
@@ -81,7 +87,7 @@ says only that it is the initial release; every later one carries the draft's no
 ## Checks every integration's tests run
 
 `ha/actions/tests` runs pyright strict, the tests with 100% coverage, `ha/tools/contract.py` and
-`ha/tools/template.py check`. The contract: the manifest says `0.0.0`; `hacs.json` sets
+`common/tools/template.py check ha`. The contract: the manifest says `0.0.0`; `hacs.json` sets
 `zip_release`, names the zip after the domain and requires the Home Assistant the tests run;
 the requirements follow hassfest's rules for a custom integration - none Home Assistant itself
 installs, a minimum version that admits Home Assistant's for one its own integrations pin, `==`
@@ -101,7 +107,7 @@ first library a branch of the same name too.
 ## On the way to the standard
 
 An integration far from the standard - Aula, whose code was written before it - is not left red
-while it gets there. `[tool.ha-integration-workflows] transition` in its `pyproject.toml` says
+while it gets there. `[tool.hairingx-workflows] transition` in its `pyproject.toml` says
 why; `coverage` then sets the percentage its tests must reach, and pyright - strict - may leave
 the files listed in its `ignore` unchecked. The contract warns on every run while a transition
 lasts, and refuses a lower coverage, a pyright mode other than strict, or files left unchecked

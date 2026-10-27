@@ -421,6 +421,18 @@ class TestCommandLine(unittest.TestCase):
             _run(["final-notes", "", body, str(notes)])
             self.assertEqual(notes.read_text(encoding="utf-8"), "Initial release.\n")
 
+    def test_a_version_the_package_index_has_taken_is_never_released_again(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tags = Path(directory) / "tags"
+            tags.write_text("v0.2.8\n", encoding="utf-8")
+            published = Path(directory) / "published"
+            published.write_text("0.2.8\n0.2.9\n", encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                _run(["next", FINAL_RELEASE, "v0.2.9", "", str(tags), str(published)])
+            output = _run(["next", FINAL_RELEASE, "v0.3.0", "", str(tags), str(published)])
+        self.assertIn("version=0.3.0\n", output)
+        self.assertIn("previous_tag=v0.2.8\n", output)
+
     def test_test_build_prints_what_the_workflow_reads(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tags = Path(directory) / "tags"
