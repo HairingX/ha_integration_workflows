@@ -5,9 +5,9 @@
 
 The promises: the manifest says 0.0.0, as the version lives in the release's tag and zip; HACS
 installs a zip named after the domain and requires the Home Assistant the tests run; every
-requirement is pinned, the tests run that version and requirements-test.txt pins it, and a package
-Home Assistant's own integrations pin is pinned to their version; the quality scale states every
-rule; and every translation holds the same keys.
+requirement is one Home Assistant accepts, by hassfest's rules for a custom integration, pinned
+with == where those rules allow, run by the tests and pinned in requirements-test.txt; the quality
+scale states every rule; and every translation holds the same keys.
 """
 
 import importlib.metadata
@@ -15,11 +15,13 @@ import importlib.util
 import json
 import sys
 from collections.abc import Iterator, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
 import yaml
 from packaging.requirements import InvalidRequirement, Requirement
+from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
@@ -62,13 +64,6 @@ def _installed(name: str) -> str | None:
         return None
 
 
-def _core_pins() -> dict[str, set[str]]:
-    spec = importlib.util.find_spec("homeassistant")
-    if spec is None or spec.origin is None:
-        return {}
-    return core_pins(Path(spec.origin).parent / "components")
-
-
 def released(version: str) -> bool:
     """Whether `version` is a release, not a build of a branch."""
     try:
@@ -97,70 +92,123 @@ def check_hacs(hacs: Mapping[str, Any], name: str, home_assistant: str | None) -
         )
 
 
-def check_requirements(
-    requirements: list[str], pinned: list[str], installed: Mapping[str, str | None]
-) -> Iterator[str]:
-    """Every requirement is pinned exactly, installed at that version, and pinned for the tests.
+@dataclass(frozen=True)
+class HomeAssistant:
+    """What the installed Home Assistant requires of a custom integration's requirements."""
 
-    A library installed from a branch is no release, so its pin is not checked.
-    """
-    texts = [line.split("#", 1)[0].strip() for line in pinned]
-    pins = {
-        canonicalize_name(Requirement(text).name): text
-        for text in texts
-        if text and not text.startswith("-") and "@" not in text
+    dependencies: frozenset[str] = frozenset()
+    """Packages Home Assistant itself installs, by canonical name."""
+    pins: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    """The versions Home Assistant's own integrations pin, by canonical name."""
+    constraints: Mapping[str, SpecifierSet] = field(default_factory=dict[str, SpecifierSet])
+    """Home Assistant's package constraints, by canonical name."""
+
+
+def _requirements(lines: list[str]) -> Iterator[Requirement]:
+    for line in lines:
+        text = line.split("#", 1)[0].strip()
+        if not text or text.startswith("-"):
+            continue
+        try:
+            yield Requirement(text)
+        except InvalidRequirement:
+            continue
+
+
+def home_assistant(package: Path, dependencies: list[str]) -> HomeAssistant:
+    """What the Home Assistant installed at `package`, which requires `dependencies`, requires."""
+    pins: dict[str, set[str]] = {}
+    for manifest in sorted((package / "components").glob("*/manifest.json")):
+        for requirement in _requirements(cast(list[str], _json(manifest).get("requirements", []))):
+            for specifier in requirement.specifier:
+                if specifier.operator == "==":
+                    pins.setdefault(canonicalize_name(requirement.name), set()).add(specifier.version)
+    constraints_file = package / "package_constraints.txt"
+    constraints: dict[str, SpecifierSet] = {
+        canonicalize_name(requirement.name): requirement.specifier
+        for requirement in _requirements(
+            constraints_file.read_text("utf-8").splitlines() if constraints_file.exists() else []
+        )
     }
+    return HomeAssistant(
+        dependencies=frozenset(
+            canonicalize_name(requirement.name)
+            for requirement in _requirements(dependencies)
+            if requirement.marker is None
+        ),
+        pins={name: frozenset(versions) for name, versions in pins.items()},
+        constraints=constraints,
+    )
+
+
+def _installed_home_assistant() -> HomeAssistant:
+    spec = importlib.util.find_spec("homeassistant")
+    if spec is None or spec.origin is None:
+        return HomeAssistant()
+    return home_assistant(Path(spec.origin).parent, importlib.metadata.requires("homeassistant") or [])
+
+
+def check_requirements(
+    requirements: list[str],
+    pinned: list[str],
+    installed: Mapping[str, str | None],
+    core: HomeAssistant,
+) -> Iterator[str]:
+    """Every requirement is one Home Assistant accepts, the tests run it, and they pin it.
+
+    The rules are hassfest's for a custom integration, which shares Home Assistant's Python
+    environment: a package Home Assistant itself installs is not listed; one its own integrations
+    pin is required at a minimum version that admits theirs, so that it follows Home Assistant's
+    updates, and the tests run Home Assistant's version; one its package constraints bound must
+    admit their bound. Any other is pinned with ==, and the tests run that version. A library
+    installed from a branch is no release, so its version is not checked.
+    """
+    test_pins = {canonicalize_name(r.name): r for r in _requirements(pinned) if not r.url}
     for text in requirements:
         requirement = Requirement(text)
         name = canonicalize_name(requirement.name)
-        specifiers = list(requirement.specifier)
-        if len(specifiers) != 1 or specifiers[0].operator != "==":
+        exact = [s.version for s in requirement.specifier if s.operator in ("==", "===")]
+        version = installed.get(name)
+        tested = test_pins.get(name)
+        tested_versions: set[str] = (
+            {s.version for s in tested.specifier if s.operator == "=="} if tested else set()
+        )
+        if name in core.dependencies:
+            yield f"{requirement.name} is a dependency of Home Assistant itself; the manifest must not list it"
+            continue
+        theirs = core.pins.get(name)
+        if theirs:
+            if exact:
+                yield (
+                    f"the manifest pins {text!r}, a package Home Assistant's own integrations use "
+                    f"({', '.join(sorted(theirs))}); require a minimum version instead, such as "
+                    f"'{requirement.name}>={min(theirs, key=Version)}'"
+                )
+                continue
+            if not all(requirement.specifier.contains(v, prereleases=True) for v in theirs):
+                yield f"the manifest's {text!r} excludes {requirement.name} {', '.join(sorted(theirs))}, which Home Assistant's own integrations pin"
+                continue
+            if not tested_versions & theirs:
+                yield f"requirements-test.txt must pin {requirement.name} to the version Home Assistant's own integrations pin ({', '.join(sorted(theirs))})"
+            elif version is not None and version not in theirs:
+                yield f"the tests run {requirement.name} {version}, not the version Home Assistant's own integrations pin"
+            continue
+        constraint = core.constraints.get(name)
+        if len(exact) != 1 or len(requirement.specifier) != 1:
             yield f"the manifest's requirement {text!r} must pin one version with =="
             continue
-        version = installed.get(name)
+        if constraint is not None and not constraint.contains(exact[0], prereleases=True):
+            yield f"the manifest pins {text!r}, which Home Assistant's package constraints ({requirement.name}{constraint}) exclude"
+            continue
         if version is None:
             yield f"{requirement.name} is required by the manifest but not installed"
             continue
         if not released(version):
             continue
-        if version != specifiers[0].version:
+        if version != exact[0]:
             yield f"the manifest pins {text!r}, but the tests run {requirement.name} {version}"
-        if pins.get(name) != text:
+        if tested_versions != {exact[0]}:
             yield f"requirements-test.txt must pin {text!r}, as the manifest does"
-
-
-def core_pins(components: Path) -> dict[str, set[str]]:
-    """The versions Home Assistant's own integrations pin, by canonical package name."""
-    pins: dict[str, set[str]] = {}
-    for manifest in sorted(components.glob("*/manifest.json")):
-        for text in cast(list[str], _json(manifest).get("requirements", [])):
-            try:
-                requirement = Requirement(text)
-            except InvalidRequirement:
-                continue
-            for specifier in requirement.specifier:
-                if specifier.operator == "==":
-                    pins.setdefault(canonicalize_name(requirement.name), set()).add(specifier.version)
-    return pins
-
-
-def check_core_pins(requirements: list[str], core: Mapping[str, set[str]]) -> Iterator[str]:
-    """A requirement Home Assistant's own integrations also pin is pinned to their version.
-
-    Home Assistant installs every loaded integration's requirements; two integrations pinning one
-    package to different versions make it reinstall one over the other.
-    """
-    for text in requirements:
-        requirement = Requirement(text)
-        theirs = core.get(canonicalize_name(requirement.name))
-        if not theirs:
-            continue
-        ours = {s.version for s in requirement.specifier if s.operator == "=="}
-        if not ours & theirs:
-            yield (
-                f"the manifest pins {text!r}, but Home Assistant's own integrations pin "
-                f"{requirement.name} {', '.join(sorted(theirs))}"
-            )
 
 
 def check_quality_scale(rules: Mapping[str, Any]) -> Iterator[str]:
@@ -245,8 +293,7 @@ def check(root: Path) -> list[str]:
         *check_standard(tool(root, "pyright"), coverage(root), transition(root)),
         *check_manifest(manifest),
         *check_hacs(_json(root / "hacs.json"), name, _installed("homeassistant")),
-        *check_requirements(requirements, pinned, installed),
-        *check_core_pins(requirements, _core_pins()),
+        *check_requirements(requirements, pinned, installed, _installed_home_assistant()),
         *check_quality_scale(rules),
         *check_translations(translations),
     ]
