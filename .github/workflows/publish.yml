@@ -1,0 +1,123 @@
+name: Publish
+
+# Run this from the Actions tab, on main, to release the workflows to the integrations: it tags
+# the checked commit vMAJOR.MINOR.PATCH, moves the major tag vMAJOR that every integration calls
+# to it, and publishes a GitHub release. Nothing is pushed to main.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          MAJOR.MINOR.PATCH without a v, higher than every version published. A new major is for
+          a change the integrations' copies of the template must follow in the same step.
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    name: Check the version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      major: ${{ steps.version.outputs.major }}
+      sha: ${{ steps.main.outputs.sha }}
+    steps:
+      - name: Refuse to run from anything but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Publish from main, not $GITHUB_REF_NAME."
+          exit 1
+
+      - name: Check out main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Record the commit to publish
+        id: main
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Check the version against every version published
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          python -m pip install packaging==26.3
+          gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name' \
+            > "$RUNNER_TEMP/tags"
+          python tools/release_version.py next "final release" "" "$VERSION" "$RUNNER_TEMP/tags" \
+            | grep '^tag=' | tee -a "$GITHUB_OUTPUT"
+          echo "major=v${VERSION%%.*}" | tee -a "$GITHUB_OUTPUT"
+
+  check:
+    name: CI
+    needs: prepare
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+
+  publish:
+    name: Tag and publish
+    needs: [prepare, check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      MAJOR: ${{ needs.prepare.outputs.major }}
+      SHA: ${{ needs.prepare.outputs.sha }}
+    steps:
+      - name: Check out the checked commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Tag the commit, and move the major version to it
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # A re-run finds the tag it pushed before; the tag is annotated, so compare its commit.
+          if git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null; then
+            tagged=$(git rev-parse "$TAG^{commit}")
+            if [[ "$tagged" != "$SHA" ]]; then
+              echo "::error::$TAG already tags $tagged, not the checked commit $SHA."
+              exit 1
+            fi
+          else
+            git tag -a "$TAG" -m "Release $TAG" "$SHA"
+            git push origin "refs/tags/$TAG"
+          fi
+          git tag -f -a "$MAJOR" -m "$MAJOR is $TAG" "$SHA"
+          git push --force origin "refs/tags/$MAJOR"
+
+      - name: Publish the GitHub release
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --silent 2>/dev/null; then
+            echo "$TAG is already published."
+            exit 0
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" \
+            --generate-notes

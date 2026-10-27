@@ -1,0 +1,24 @@
+# Proposes updates to the pinned actions and test tools as pull requests, which CI then checks
+# before anything is merged.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /actions/*
+      - /template
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    assignees:
+      - HairingX
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    assignees:
+      - HairingX

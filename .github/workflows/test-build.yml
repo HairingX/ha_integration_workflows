@@ -1,0 +1,265 @@
+name: Test build
+
+# Called by an integration's Test build workflow, run from its Actions tab on a development
+# branch, to try that branch on a real Home Assistant.
+#
+# It publishes the branch as a GitHub pre-release, which HACS offers only to those who switch beta
+# versions on for the repository. The branch itself is not changed: its commit is tagged, and the
+# version and the libraries are set only in the zip the pre-release carries. A library developed
+# alongside the integration comes from its branch of the same name where it has one, pinned to
+# that branch's current commit, and otherwise from what the manifest pins. A new test build of a
+# branch replaces the previous one; the Test build cleanup workflow removes them when the branch's
+# pull request is closed or the branch is deleted.
+on:
+  workflow_call:
+
+permissions: {}
+
+env:
+  TOOLS: .ha_integration_workflows/tools
+
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    name: Work out the test build
+    runs-on: ubuntu-latest
+    permissions:
+      # Draft releases are listed only to those who can push.
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.branch.outputs.sha }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Refuse to run from main
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "::error::main is released with the Release workflow, as a release candidate where wanted."
+          exit 1
+
+      - name: Check out the branch
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check out the release tools of this workflow's own commit
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ha_integration_workflows
+          persist-credentials: false
+
+      - name: Record the commit to build
+        id: branch
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install packaging
+        run: python -m pip install packaging==26.3
+
+      - name: Work out the version
+        id: version
+        run: |
+          # The version the next release gets, as a test build of it.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft) | @json' > "$RUNNER_TEMP/drafts"
+          draft=$(python "$TOOLS/release_version.py" draft "$RUNNER_TEMP/drafts" \
+            | sed -n 's/^draft_tag=//p')
+          gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name' \
+            > "$RUNNER_TEMP/tags"
+          python "$TOOLS/release_version.py" test-build "$draft" "$RUNNER_TEMP/tags" \
+            | tee -a "$GITHUB_OUTPUT"
+
+  test:
+    name: Tests and type check
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the commit to build
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+
+      - name: Check out the release tools of this workflow's own commit
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ha_integration_workflows
+          persist-credentials: false
+
+      - name: Tests and type check
+        uses: ./.ha_integration_workflows/actions/tests
+        with:
+          branch: ${{ github.ref_name }}
+
+  hassfest:
+    name: Hassfest
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the commit to build
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+
+      - name: Validate
+        uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # HACS validates through the GitHub API, at the event's ref unless told otherwise.
+      - name: Validate the commit to build
+        uses: hacs/action@main
+        env:
+          REPOSITORY_REF: ${{ needs.prepare.outputs.sha }}
+        with:
+          category: integration
+
+  publish:
+    name: Tag and publish the pre-release
+    needs: [prepare, test, hassfest, hacs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      BRANCH: ${{ github.ref_name }}
+      SHA: ${{ needs.prepare.outputs.sha }}
+      OWNER: ${{ github.repository_owner }}
+    steps:
+      - name: Check out the tested commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Check out the release tools of this workflow's own commit
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ha_integration_workflows
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install packaging
+        run: python -m pip install packaging==26.3
+
+      - name: Build the zip, with the version and the libraries set in the manifest
+        run: |
+          integration=$(python "$TOOLS/repository.py" integration .)
+          python "$TOOLS/libraries.py" branch . "$OWNER" "$BRANCH" > "$RUNNER_TEMP/libraries"
+          mapfile -t libraries < "$RUNNER_TEMP/libraries"
+          python "$TOOLS/release_version.py" write "$VERSION" "$integration/manifest.json"
+          python "$TOOLS/libraries.py" manifest "$integration/manifest.json" "${libraries[@]}"
+          changed=$(git status --porcelain --untracked-files=no)
+          if [[ "$changed" != " M $integration/manifest.json" ]]; then
+            echo "::error::Setting the version changed something else, or nothing:"
+            echo "$changed"
+            exit 1
+          fi
+          zip=$(python "$TOOLS/repository.py" zip .)
+          python "$TOOLS/release_zip.py" "$integration" "$RUNNER_TEMP/$zip" "$VERSION"
+          echo "ZIP=$RUNNER_TEMP/$zip" >> "$GITHUB_ENV"
+
+      # The cleanup of a deleted branch may have run while this was being tested.
+      - name: Refuse a branch that no longer exists
+        run: |
+          if ! git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" > /dev/null; then
+            echo "::error::The branch $BRANCH no longer exists; nothing is published."
+            exit 1
+          fi
+
+      - name: Tag the tested commit
+        run: |
+          # A re-run finds the tag it pushed before; the tag is annotated, so compare its commit.
+          if git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null; then
+            tagged=$(git rev-parse "$TAG^{commit}")
+            if [[ "$tagged" != "$SHA" ]]; then
+              echo "::error::$TAG already tags $tagged, not the tested commit $SHA."
+              exit 1
+            fi
+            echo "$TAG already tags $SHA."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Test build $TAG of $BRANCH" "$SHA"
+            # Only the tag: the branch stays as it is.
+            git push origin "refs/tags/$TAG"
+          fi
+
+      - name: Replace the branch's previous test builds
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq "$(cat "$TOOLS/branch_test_builds.jq")" > "$RUNNER_TEMP/old"
+          while read -r old; do
+            echo "Removing $old"
+            if ! gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes; then
+              # Accepted only when the branch's cleanup removed it meanwhile.
+              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$old" --silent 2> "$RUNNER_TEMP/error" && exit 1
+              grep -q "HTTP 404" "$RUNNER_TEMP/error"
+            fi
+          done < "$RUNNER_TEMP/old"
+
+      - name: Publish the pre-release
+        run: |
+          # releases/tags/... returns only a published release, never a draft of the same tag.
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --silent 2>/dev/null; then
+            echo "$TAG is already published; uploading the zip again."
+            gh release upload "$TAG" "$ZIP" --repo "$GITHUB_REPOSITORY" --clobber
+            exit 0
+          fi
+          # gh creates a release as a draft and publishes it once the zip is uploaded: an attempt
+          # that died in between left a draft of this tag behind.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft and .tag_name == env.TAG) | .id' > "$RUNNER_TEMP/stray"
+          while read -r id; do
+            echo "Removing the draft $id of $TAG"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" --silent
+          done < "$RUNNER_TEMP/stray"
+          {
+            echo "Test build of branch \`$BRANCH\`, commit $SHA."
+            echo
+            if [[ -s "$RUNNER_TEMP/libraries" ]]; then
+              echo "Libraries from their branch \`$BRANCH\`:"
+              while read -r library; do
+                echo "- \`$library\`"
+              done < "$RUNNER_TEMP/libraries"
+            else
+              echo "Libraries as the manifest pins them."
+            fi
+            echo
+            # The cleanup finds a branch's test builds by this line.
+            echo "test-build-branch: $BRANCH"
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$TAG" "$ZIP" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$TAG (test build of $BRANCH)" --notes-file "$RUNNER_TEMP/notes.md" \
+            --prerelease --latest=false
