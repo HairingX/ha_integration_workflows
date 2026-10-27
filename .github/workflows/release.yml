@@ -312,7 +312,8 @@ jobs:
           flags=()
           if [[ "$PRERELEASE" == "false" && -n "$DRAFT_ID" ]]; then
             # A final release carries the draft's notes, as approved before running this.
-            base64 --decode <<< "$DRAFT_BODY" > "$RUNNER_TEMP/notes.md"
+            python "$TOOLS/release_version.py" final-notes "$PREVIOUS_TAG" "$DRAFT_BODY" \
+              "$RUNNER_TEMP/notes.md"
             flags+=(--notes-file "$RUNNER_TEMP/notes.md")
           else
             # GitHub writes the notes from the pull requests since the previous release.

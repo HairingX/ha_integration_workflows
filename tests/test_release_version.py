@@ -16,6 +16,7 @@ from release_version import (
     main,
     newest_draft,
     next_version,
+    final_notes,
     previous_tag,
     require_changes,
     next_release_base,
@@ -392,6 +393,14 @@ class TestWrite(unittest.TestCase):
 
 
 
+class TestFinalNotes(unittest.TestCase):
+    def test_a_final_release_carries_the_drafts_notes(self) -> None:
+        self.assertEqual(final_notes("v0.2.8", "## Fixes\n* A fix\n"), "## Fixes\n* A fix\n")
+
+    def test_the_first_final_release_says_it_is_the_initial_release(self) -> None:
+        self.assertEqual(final_notes("", "> [!WARNING]\n> no baseline\n"), "Initial release.\n")
+
+
 class TestCommandLine(unittest.TestCase):
     def test_next_prints_what_the_workflow_reads(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -402,6 +411,15 @@ class TestCommandLine(unittest.TestCase):
             output,
             "version=0.2.9\ntag=v0.2.9\nprerelease=false\nprevious_tag=v0.2.8\nuses_draft=true\n",
         )
+
+    def test_final_notes_writes_the_notes_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            notes = Path(directory) / "notes.md"
+            body = base64.b64encode("## Fixes\n* Ræv\n".encode()).decode()
+            _run(["final-notes", "v0.2.8", body, str(notes)])
+            self.assertEqual(notes.read_text(encoding="utf-8"), "## Fixes\n* Ræv\n")
+            _run(["final-notes", "", body, str(notes)])
+            self.assertEqual(notes.read_text(encoding="utf-8"), "Initial release.\n")
 
     def test_test_build_prints_what_the_workflow_reads(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

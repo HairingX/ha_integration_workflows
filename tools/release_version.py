@@ -17,6 +17,11 @@ release_version.py test-build DRAFT TAGS prints version=, tag= and prerelease= l
 release_version.py check VERSION         prints version=, tag= and prerelease= lines
 release_version.py changes SINCE MERGED  refuses a release when MERGED, a file of the pull
                                          requests merged since the release SINCE, is empty
+release_version.py final-notes PREVIOUS DRAFT_BODY FILE
+                                         writes the notes of a final release to FILE: the
+                                         draft's, DRAFT_BODY (base64), or, when PREVIOUS, the
+                                         final release before it, is empty, that it is the
+                                         initial release
 release_version.py write VERSION FILE    sets the one `"version": "..."` line in FILE
 """
 
@@ -234,6 +239,18 @@ def require_changes(since: str, pull_requests: list[str]) -> None:
         )
 
 
+INITIAL_RELEASE_NOTES = "Initial release.\n"
+
+
+def final_notes(previous: str, draft_body: str) -> str:
+    """The notes of a final release: the draft's, or for the first final release, that it is one.
+
+    Release Drafter finds no baseline before the first final release, and its draft then holds a
+    warning rather than the changes.
+    """
+    return draft_body if previous else INITIAL_RELEASE_NOTES
+
+
 def write(text: str, path: Path) -> None:
     """Set the version in `path`, which must hold exactly one `"version": "..."` line."""
     version = _canonical(text)
@@ -283,6 +300,9 @@ def main(arguments: list[str]) -> None:
             _print(_canonical(text))
         case ["changes", since, merged]:
             require_changes(since, _lines(merged))
+        case ["final-notes", previous, draft_body, path]:
+            body = base64.b64decode(draft_body).decode("utf-8")
+            Path(path).write_text(final_notes(previous, body), encoding="utf-8")
         case ["write", text, path]:
             write(text, Path(path))
         case _:
