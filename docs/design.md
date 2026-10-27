@@ -7,27 +7,43 @@ and Charge Smarter - shared their release flow by copying it. The copies drifted
 found in one stayed in the others. Here the logic exists once; each integration keeps only small,
 identical files that call it, and its tests fail when those files differ from the template.
 
+The Python libraries the integrations use share most of it: the versions, release candidates,
+Release Drafter, branch names and release notes. So every kind of repository is served from this
+one repository, with one version:
+
+- `common/`: what every kind shares - the version rules (`common/tools/release_version.py`),
+  Release Drafter's configuration, and the template files every repository keeps
+  (`common/template/`: the release-notes categories and the branch-names ruleset).
+- `ha/`: the Home Assistant integrations' actions, tools and template.
+- `.github/workflows/`: the reusable workflows, prefixed by kind (`ha-release.yml`); GitHub
+  finds a reusable workflow only directly in that directory, never in a subdirectory.
+
+One version (`vX.Y.Z`, and the major `vX` the callers use) rather than one per kind: GitHub,
+Dependabot and the other tools of Actions expect a repository's tags to be its versions. A change
+that breaks one kind's callers is a new major for all; as every repository keeps the template's
+files, it only changes the major the next sync writes.
+
 ## How an integration calls it
 
 GitHub's own mechanism for CI shared between repositories:
 
 - **Reusable workflows** (`on: workflow_call`) for whole flows: Release, Test build, Test build
   cleanup, Release Drafter. The integration's workflow file holds the trigger, the inputs, the
-  concurrency group and the token's permissions, and calls `...@v1`. A called workflow cannot
+  concurrency group and the token's permissions, and calls `...@v2`. A called workflow cannot
   raise the permissions its caller grants.
-- **Composite actions** for steps a required check runs: `actions/tests` and
-  `actions/libraries-released`. A ruleset requires a check by its name, and a job called through
+- **Composite actions** for steps a required check runs: `ha/actions/tests` and
+  `ha/actions/libraries-released`. A ruleset requires a check by its name, and a job called through
   a reusable workflow is named `<caller job> / <job>`; a job of the integration's own workflow
   that uses an action keeps the name the rulesets require ("Tests and type check", "Libraries
   released and pinned"). Hassfest and HACS are a single step each, called directly.
 - A reusable workflow needs its tools at its own version. `uses:` takes no expressions, so it
   checks this repository out at `job.workflow_repository` / `job.workflow_sha` - GitHub's job
   context names the repository and commit of the workflow file that defines the job - into
-  `.ha_integration_workflows`, and uses the actions from there by path. Release Drafter reads its
+  `.workflows`, and uses the actions from there by path. Release Drafter reads its
   configuration from the same commit (`config-name: owner/repo:/path@sha`). The only inputs a
   `workflow_call` takes are strings, numbers and booleans; the choice of release candidate or
   final release is a choice input of the caller, passed on as a string.
-- `@v1` is a major tag, moved by Publish; this follows the integrations' rule of referring to
+- `@v2` is a major tag, moved by Publish; this follows the integrations' rule of referring to
   actions by their major version.
 
 ## What differs between integrations, and where it is read
@@ -64,11 +80,13 @@ says only that it is the initial release; every later one carries the draft's no
 
 ## Checks every integration's tests run
 
-`actions/tests` runs pyright strict, the tests with 100% coverage, `tools/contract.py` and
-`tools/template.py check`. The contract: the manifest says `0.0.0`; `hacs.json` sets
+`ha/actions/tests` runs pyright strict, the tests with 100% coverage, `ha/tools/contract.py` and
+`ha/tools/template.py check`. The contract: the manifest says `0.0.0`; `hacs.json` sets
 `zip_release`, names the zip after the domain and requires the Home Assistant the tests run;
-every requirement is pinned with `==`, installed at that version and pinned the same in
-`requirements-test.txt` (skipped for a library built from a branch); `quality_scale.yaml` states
+the requirements follow hassfest's rules for a custom integration - none Home Assistant itself
+installs, a minimum version that admits Home Assistant's for one its own integrations pin, `==`
+for any other - and `requirements-test.txt` pins what the tests run (skipped for a library built
+from a branch); `quality_scale.yaml` states
 every rule hassfest's `ALL_RULES` lists, with a comment for each rule not done; every
 translation holds English's keys.
 

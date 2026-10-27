@@ -3,13 +3,13 @@
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tools"]
+pythonpath = ["common/tools", "ha/tools"]
 
 [tool.pyright]
 # The standard belongs to the repository, not to a personal editor setting: an IDE and a CI run
 # must agree on what counts as an error.
-include = ["tools", "tests"]
-extraPaths = ["tools"]
+include = ["common", "ha", "tests"]
+extraPaths = ["common/tools", "ha/tools"]
 exclude = ["**/__pycache__", "**/.venv"]
 typeCheckingMode = "strict"
 reportMissingTypeStubs = "none"
