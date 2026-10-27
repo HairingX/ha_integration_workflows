@@ -76,6 +76,15 @@ A library taken from its branch replaces its pin, rather than being installed ov
 released library pins another one, a branch of only the other one may then not resolve: give the
 first library a branch of the same name too.
 
+## On the way to the standard
+
+An integration far from the standard - Aula, whose code was written before it - is not left red
+while it gets there. `[tool.ha-integration-workflows] transition` in its `pyproject.toml` says
+why; `coverage` then sets the percentage its tests must reach, and its pyright configuration may
+hold only the modules listed in `strict` to strict. The contract warns on every run while a
+transition lasts, and refuses a lower coverage or a pyright mode other than strict without one.
+That the floor only rises is a rule of review, not a check.
+
 ## Facts relied on, and where they were checked
 
 - `job.workflow_repository` and `job.workflow_sha`: GitHub's contexts reference. actionlint

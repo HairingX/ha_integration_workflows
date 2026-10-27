@@ -13,6 +13,7 @@ from contract import (
     check_manifest,
     check_quality_scale,
     check_requirements,
+    check_standard,
     check_translations,
     released,
 )
@@ -142,6 +143,7 @@ def _repository(root: Path) -> Path:
         json.dumps({"zip_release": True, "filename": "demo.zip", "homeassistant": "2026.10.4"}), "utf-8"
     )
     (root / "requirements-test.txt").write_text("lib==1.2.0\n", "utf-8")
+    (root / "pyproject.toml").write_text('[tool.pyright]\ntypeCheckingMode = "strict"\n', "utf-8")
     return root
 
 
@@ -168,3 +170,15 @@ def test_a_repository_without_a_quality_scale_is_reported(
 def test_a_pin_with_a_comment_is_read_without_it() -> None:
     pinned = ["lib==1.2.0  # the manifest's", "other @ https://example.invalid/x.tar.gz"]
     assert list(check_requirements(["lib==1.2.0"], pinned, {"lib": "1.2.0"})) == []
+
+
+def test_the_whole_standard_holds_without_a_transition() -> None:
+    assert list(check_standard({"typeCheckingMode": "strict"}, 100, None)) == []
+    assert list(check_standard({"typeCheckingMode": "standard"}, 90, None)) == [
+        'pyproject.toml must set [tool.pyright] typeCheckingMode to "strict"',
+        "the tests must cover every line, not 90%",
+    ]
+
+
+def test_a_transition_relaxes_the_standard() -> None:
+    assert list(check_standard({"typeCheckingMode": "standard"}, 29, "Typed module by module.")) == []

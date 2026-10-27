@@ -5,6 +5,7 @@
     repository.py zip ROOT           prints the name of the zip HACS installs, from hacs.json
     repository.py libraries ROOT     prints the libraries developed alongside the integration, in
                                      the order they are installed, one per line
+    repository.py coverage ROOT      prints the coverage the tests must reach, in percent
 """
 
 import json
@@ -47,15 +48,37 @@ def zip_name(root: Path) -> str:
     return str(hacs["filename"])
 
 
-def libraries(root: Path) -> list[str]:
-    """The libraries developed alongside the integration, in the order they are installed."""
+def tool(root: Path, name: str) -> dict[str, Any]:
+    """The table [tool.<name>] of the repository's pyproject.toml, empty without one."""
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
-        return []
+        return {}
     data = tomllib.loads(pyproject.read_text("utf-8"))
-    tool = cast(dict[str, Any], data.get("tool", {}))
-    table = cast(dict[str, Any], tool.get(CONFIGURATION, {}))
-    names = table.get("libraries", [])
+    tools = cast(dict[str, Any], data.get("tool", {}))
+    return cast(dict[str, Any], tools.get(name, {}))
+
+
+def transition(root: Path) -> str | None:
+    """Why the repository is not yet held to the whole standard, None when it is."""
+    reason = tool(root, CONFIGURATION).get("transition")
+    if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+        sys.exit(f"::error::[tool.{CONFIGURATION}] transition must say why, as text")
+    return reason
+
+
+def coverage(root: Path) -> int:
+    """The coverage the tests must reach: 100, lower only during a transition."""
+    value = tool(root, CONFIGURATION).get("coverage", 100)
+    if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 100:
+        sys.exit(f"::error::[tool.{CONFIGURATION}] coverage must be a whole percentage")
+    if value < 100 and transition(root) is None:
+        sys.exit(f"::error::[tool.{CONFIGURATION}] coverage below 100 needs a transition saying why")
+    return value
+
+
+def libraries(root: Path) -> list[str]:
+    """The libraries developed alongside the integration, in the order they are installed."""
+    names = tool(root, CONFIGURATION).get("libraries", [])
     if not isinstance(names, list) or not all(isinstance(name, str) for name in cast(list[Any], names)):
         sys.exit(f"::error::[tool.{CONFIGURATION}] libraries must be a list of names")
     return cast(list[str], names)
@@ -73,6 +96,8 @@ def main(arguments: list[str]) -> None:
         case ["libraries", root]:
             for name in libraries(Path(root)):
                 print(name)
+        case ["coverage", root]:
+            print(coverage(Path(root)))
         case _:
             sys.exit(__doc__)
 

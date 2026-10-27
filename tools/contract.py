@@ -21,7 +21,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
-from repository import domain, integration
+from repository import coverage, domain, integration, tool, transition
 
 QUALITY_SCALE_RULES = frozenset({
     # Bronze
@@ -166,6 +166,16 @@ def check_translations(translations: Mapping[str, Mapping[str, Any]]) -> Iterato
             yield f"translations/{language}.json has {key}, which English does not"
 
 
+def check_standard(pyright: Mapping[str, Any], percent: int, reason: str | None) -> Iterator[str]:
+    """pyright is strict and the tests cover every line, unless a transition says why not yet."""
+    if reason is not None:
+        return
+    if pyright.get("typeCheckingMode") != "strict":
+        yield "pyproject.toml must set [tool.pyright] typeCheckingMode to \"strict\""
+    if percent != 100:
+        yield f"the tests must cover every line, not {percent}%"
+
+
 def check(root: Path) -> list[str]:
     """Every broken promise of the repository at `root`."""
     directory = integration(root)
@@ -187,6 +197,7 @@ def check(root: Path) -> list[str]:
         path.stem: _json(path) for path in sorted((directory / "translations").glob("*.json"))
     }
     errors += [
+        *check_standard(tool(root, "pyright"), coverage(root), transition(root)),
         *check_manifest(manifest),
         *check_hacs(_json(root / "hacs.json"), name, _installed("homeassistant")),
         *check_requirements(requirements, pinned, installed),
@@ -200,6 +211,9 @@ def main(arguments: list[str]) -> None:
     """Run the check `arguments` names."""
     match arguments:
         case [root]:
+            reason = transition(Path(root))
+            if reason is not None:
+                print(f"::warning::Not yet held to the whole standard: {reason}")
             errors = check(Path(root))
             for error in errors:
                 print(f"::error::{error}")

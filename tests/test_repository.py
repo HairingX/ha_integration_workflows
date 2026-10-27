@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from repository import domain, integration, libraries, zip_name
+from repository import coverage, domain, integration, libraries, transition, zip_name
 
 
 def _repository(root: Path, *, pyproject: str | None = None) -> Path:
@@ -70,3 +70,36 @@ def test_a_list_of_anything_but_names_is_refused(tmp_path: Path) -> None:
     root = _repository(tmp_path, pyproject="[tool.ha-integration-workflows]\nlibraries = [1]\n")
     with pytest.raises(SystemExit, match="must be a list of names"):
         libraries(root)
+
+
+def test_the_tests_cover_every_line_unless_told_otherwise(tmp_path: Path) -> None:
+    assert coverage(_repository(tmp_path)) == 100
+    assert transition(_repository(tmp_path / "other")) is None
+
+
+def test_a_transition_allows_a_lower_coverage_and_says_why(tmp_path: Path) -> None:
+    root = _repository(
+        tmp_path,
+        pyproject='[tool.ha-integration-workflows]\ncoverage = 29\ntransition = "Typed and tested module by module."\n',
+    )
+    assert coverage(root) == 29
+    assert transition(root) == "Typed and tested module by module."
+
+
+def test_a_lower_coverage_without_a_transition_is_refused(tmp_path: Path) -> None:
+    root = _repository(tmp_path, pyproject="[tool.ha-integration-workflows]\ncoverage = 90\n")
+    with pytest.raises(SystemExit, match="needs a transition saying why"):
+        coverage(root)
+
+
+@pytest.mark.parametrize("setting", ["coverage = 101", 'coverage = "100"', "coverage = true"])
+def test_a_coverage_that_is_no_percentage_is_refused(tmp_path: Path, setting: str) -> None:
+    root = _repository(tmp_path, pyproject=f'[tool.ha-integration-workflows]\n{setting}\ntransition = "x"\n')
+    with pytest.raises(SystemExit, match="must be a whole percentage"):
+        coverage(root)
+
+
+def test_a_transition_that_says_nothing_is_refused(tmp_path: Path) -> None:
+    root = _repository(tmp_path, pyproject='[tool.ha-integration-workflows]\ntransition = " "\n')
+    with pytest.raises(SystemExit, match="must say why"):
+        transition(root)
