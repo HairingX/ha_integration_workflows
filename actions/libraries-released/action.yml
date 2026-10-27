@@ -1,0 +1,37 @@
+name: Libraries released and pinned
+description: >-
+  Fails while a library developed alongside the integration is taken from a branch of the pull
+  request's name: such a pull request is merged only once the library is released, pinned and
+  its branch deleted. The repository must already be checked out.
+
+inputs:
+  branch:
+    description: The pull request's branch.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: "3.14"
+
+    - name: No library from a branch
+      shell: bash
+      env:
+        BRANCH: ${{ inputs.branch }}
+        OWNER: ${{ github.repository_owner }}
+      run: |
+        python -m pip install packaging==26.3
+        python "$GITHUB_ACTION_PATH/../../tools/libraries.py" branch . "$OWNER" "$BRANCH" \
+          > "$RUNNER_TEMP/unreleased"
+        if [[ -s "$RUNNER_TEMP/unreleased" ]]; then
+          while read -r requirement; do
+            echo "::error::Taken from branch $BRANCH, not a release: $requirement"
+          done < "$RUNNER_TEMP/unreleased"
+          echo "Release the library, pin its version in the manifest and requirements-test.txt,"
+          echo "and delete its branch $BRANCH."
+          exit 1
+        fi
+        echo "Every library comes from the release the manifest pins."

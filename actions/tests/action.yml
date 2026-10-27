@@ -1,0 +1,74 @@
+name: Tests and type check
+description: >-
+  Installs what requirements-test.txt pins - on a development branch with the libraries' branch
+  of the same name in place of their pins - then runs pyright strict, the tests with full
+  coverage, the repository's contract and the template check. The repository must already be
+  checked out.
+
+inputs:
+  branch:
+    description: >-
+      The branch the commit is on. Libraries developed alongside the integration are taken from
+      their branch of this name, where they have one; empty or main takes what the manifest pins.
+    required: false
+    default: ""
+  template-check:
+    description: >-
+      Whether to check that the shared files agree with the template. Release and Test build
+      leave it out: a change to the template must not stop a release before every integration is
+      synced, and pull requests check it.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # The Python the pinned Home Assistant release requires.
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: "3.14"
+
+    - name: Install the test tools, Home Assistant and the libraries
+      shell: bash
+      env:
+        BRANCH: ${{ inputs.branch }}
+        OWNER: ${{ github.repository_owner }}
+      run: |
+        tools="$GITHUB_ACTION_PATH/../../tools"
+        python -m pip install packaging==26.3
+        requirements="$RUNNER_TEMP/requirements.txt"
+        cp requirements-test.txt "$requirements"
+        if [[ -n "$BRANCH" && "$BRANCH" != "main" ]]; then
+          python "$tools/libraries.py" branch . "$OWNER" "$BRANCH" > "$RUNNER_TEMP/libraries"
+          mapfile -t libraries < "$RUNNER_TEMP/libraries"
+          if (( ${#libraries[@]} )); then
+            printf 'Library from branch %s: %s\n' "$BRANCH" "${libraries[@]}"
+            python "$tools/libraries.py" requirements "$requirements" "${libraries[@]}"
+          fi
+        fi
+        python -m pip install -r "$requirements"
+
+    - name: Type check (pyright strict)
+      shell: bash
+      run: pyright
+
+    # Live tests need a real device; they skip themselves without one, and are excluded here.
+    # Every line of the integration is covered, and stays so.
+    - name: Test
+      shell: bash
+      run: |
+        tools="$GITHUB_ACTION_PATH/../../tools"
+        domain=$(python "$tools/repository.py" domain .)
+        coverage=$(python "$tools/repository.py" coverage .)
+        python -m pytest -m "not live" -q -o log_cli=false \
+          --cov="custom_components.$domain" --cov-report=term-missing --cov-fail-under="$coverage"
+
+    - name: Check the repository's contract
+      shell: bash
+      run: python "$GITHUB_ACTION_PATH/../../tools/contract.py" .
+
+    - name: Check that the shared files agree with the template
+      if: inputs.template-check == 'true'
+      shell: bash
+      run: python "$GITHUB_ACTION_PATH/../../tools/template.py" check .
