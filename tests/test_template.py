@@ -21,6 +21,7 @@ def _repository(root: Path) -> Path:
     (root / ".github" / "workflows").mkdir(parents=True)
     (root / ".github" / "scripts").mkdir()
     (root / ".github" / "scripts" / "old.py").write_text("", "utf-8")
+    (root / ".github" / "release-drafter.yml").write_text("template: x\n", "utf-8")
     (root / ".github" / "workflows" / "release-dev.yml").write_text("old\n", "utf-8")
     (root / ".github" / "workflows" / "tests.yml").write_text("name: Old\n", "utf-8")
     (root / "CLAUDE.md").write_text("# Conventions\n\nOur own.\n", "utf-8")
@@ -37,7 +38,8 @@ def test_every_difference_is_reported(tmp_path: Path, template: Path) -> None:
         ".github/release.yml is missing; the template has it",
         ".github/workflows/tests.yml differs from the template's",
         ".github/workflows/release-dev.yml is no workflow of the template; workflows are shared, not added per repository",
-        ".github/scripts must not exist; it comes from the template",
+        ".github/scripts must not exist; it comes from ha_integration_workflows",
+        ".github/release-drafter.yml must not exist; it comes from ha_integration_workflows",
         f"CLAUDE.md lacks the shared section between {BEGIN!r} and {END!r}",
     ]
 
@@ -47,6 +49,7 @@ def test_sync_brings_the_repository_into_agreement(tmp_path: Path, template: Pat
     sync(root, template)
     assert list(differences(root, template)) == []
     assert not (root / ".github" / "workflows" / "release-dev.yml").exists()
+    assert not (root / ".github" / "release-drafter.yml").exists()
     claude = (root / "CLAUDE.md").read_text("utf-8")
     assert claude == f"# Conventions\n\nOur own.\n\n{shared_section(template)}\n"
 

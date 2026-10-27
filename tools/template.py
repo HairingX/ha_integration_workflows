@@ -6,8 +6,8 @@
 
 Every file under template/ is copied as it is, except CLAUDE.md: the repository's CLAUDE.md holds
 it between two marker lines, after the repository's own conventions. The repository's workflows
-are exactly the template's, and it keeps no workflow scripts or actions of its own: they all come
-from this repository.
+are exactly the template's, and it keeps no workflow scripts, actions or Release Drafter
+configuration of its own: they all come from this repository.
 """
 
 import shutil
@@ -19,8 +19,9 @@ TEMPLATE = Path(__file__).parents[1] / "template"
 SECTION = "CLAUDE.md"
 BEGIN = "<!-- BEGIN ha_integration_workflows: shared by every integration; edit it there -->"
 END = "<!-- END ha_integration_workflows -->"
-OWN = (".github/scripts", ".github/actions")
-"""Directories the repository must not have: what they held comes from this repository."""
+NOT_OWN = (".github/scripts", ".github/actions", ".github/release-drafter.yml")
+"""What the repository must not have: it comes from this repository, where Release Drafter's
+configuration is read from too."""
 
 
 def files(template: Path = TEMPLATE) -> list[str]:
@@ -57,9 +58,9 @@ def differences(root: Path, template: Path = TEMPLATE) -> Iterator[str]:
     workflows = {f".github/workflows/{path.name}" for path in (root / ".github/workflows").glob("*")}
     for name in sorted(workflows - set(files(template))):
         yield f"{name} is no workflow of the template; workflows are shared, not added per repository"
-    for name in OWN:
+    for name in NOT_OWN:
         if (root / name).exists():
-            yield f"{name} must not exist; it comes from the template"
+            yield f"{name} must not exist; it comes from ha_integration_workflows"
     claude = root / SECTION
     found = section(claude.read_text("utf-8")) if claude.is_file() else None
     if found is None:
@@ -78,9 +79,12 @@ def sync(root: Path, template: Path = TEMPLATE) -> None:
     for path in (root / ".github/workflows").glob("*"):
         if f".github/workflows/{path.name}" not in names:
             path.unlink()
-    for name in OWN:
-        if (root / name).exists():
-            shutil.rmtree(root / name)
+    for name in NOT_OWN:
+        path = root / name
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
     claude = root / SECTION
     text = claude.read_text("utf-8") if claude.is_file() else ""
     found = section(text)
