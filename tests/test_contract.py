@@ -9,6 +9,8 @@ import contract
 from contract import (
     QUALITY_SCALE_RULES,
     check,
+    check_core_pins,
+    core_pins,
     check_hacs,
     check_manifest,
     check_quality_scale,
@@ -188,3 +190,17 @@ def test_no_file_is_left_unchecked_without_a_transition() -> None:
 
 def test_a_transition_relaxes_the_standard() -> None:
     assert list(check_standard({"typeCheckingMode": "standard"}, 29, "Typed module by module.")) == []
+
+
+def test_core_pins_are_read_from_home_assistants_integrations(tmp_path: Path) -> None:
+    for name, requirements in {"scrape": ["beautifulsoup4==4.13.3", "lxml==6.1.2"], "other": ["lxml>=5"]}.items():
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "manifest.json").write_text(json.dumps({"requirements": requirements}), "utf-8")
+    assert core_pins(tmp_path) == {"beautifulsoup4": {"4.13.3"}, "lxml": {"6.1.2"}}
+
+
+def test_a_package_home_assistant_pins_must_be_pinned_to_its_version() -> None:
+    core = {"beautifulsoup4": {"4.13.3"}, "lxml": {"6.1.2"}}
+    assert list(check_core_pins(["beautifulsoup4==4.13.3", "lxml==6.1.3", "qrcode==8.2"], core)) == [
+        "the manifest pins 'lxml==6.1.3', but Home Assistant's own integrations pin lxml 6.1.2"
+    ]
