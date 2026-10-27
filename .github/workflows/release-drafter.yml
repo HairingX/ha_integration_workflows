@@ -1,6 +1,6 @@
 name: Release Drafter
 
-# Called by an integration's Release Drafter workflow. Keeps a draft release proposing the next
+# Called by a repository's Release Drafter workflow. Keeps a draft release proposing the next
 # version, from the labels of the pull requests merged since the last final release, and labels
 # pull requests by their branch's name. The configuration is this repository's, at this
 # workflow's own commit. The draft is never published by hand: the Release workflow publishes it.

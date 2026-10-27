@@ -1,15 +1,16 @@
-"""The release version: work it out, check it is PEP 440 in canonical form, write it into the manifest.
+"""The release version: work it out, check it is PEP 440 in canonical form, write it into a manifest.
 
 release_version.py draft DRAFTS          prints draft_id=, draft_tag= and draft_body= (base64)
                                          lines for the newest of DRAFTS, a file of releases
                                          as JSON, one per line; empty values without one
-release_version.py next KIND DRAFT OVERRIDE TAGS
+release_version.py next KIND DRAFT OVERRIDE TAGS [PUBLISHED]
                                          prints version=, tag=, prerelease=, previous_tag= and
                                          uses_draft= lines for the next KIND ("release
                                          candidate" or "final release"); DRAFT is the draft
                                          release's tag, OVERRIDE a version to take instead,
                                          either may be empty; TAGS is a file of every tag,
-                                         one per line
+                                         PUBLISHED one of every version a package index has
+                                         taken, one per line
 release_version.py test-build DRAFT TAGS prints version=, tag= and prerelease= lines for the
                                          first free b<n> of the next release, such as 0.2.9b3:
                                          the version of the draft release's tag DRAFT, or, when
@@ -285,9 +286,11 @@ def main(arguments: list[str]) -> None:
             print(
                 f"draft_body={base64.b64encode(body.encode('utf-8')).decode('ascii')}"
             )
-        case ["next", kind, draft, override, tags]:
+        case ["next", kind, draft, override, tags, *published] if len(published) <= 1:
+            # A package index never takes a version twice, yanked or deleted ones included.
+            taken = [line for path in published for line in _lines(path)]
             version, how, uses_draft = next_version(
-                kind, draft, override, known_versions(_lines(tags))
+                kind, draft, override, known_versions(_lines(tags) + taken)
             )
             print(f"{version}: {how}", file=sys.stderr)
             _print(version)

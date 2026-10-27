@@ -11,12 +11,16 @@ from typing import Any, cast
 import pytest
 import yaml
 
+from library_contract import PYTHON_VERSIONS
+
 ROOT = Path(__file__).parents[1]
-WORKFLOWS = sorted([*(ROOT / ".github/workflows").glob("*.yml"), *(ROOT / "ha/template/.github/workflows").glob("*.yml")])
-ACTIONS = sorted((ROOT / "ha/actions").glob("*/action.yml"))
-CALLERS = sorted((ROOT / "ha/template/.github/workflows").glob("*.yml"))
+TEMPLATES = [ROOT / "common/template", ROOT / "ha/template", ROOT / "python/template"]
+CALLERS = sorted(path for template in TEMPLATES for path in (template / ".github/workflows").glob("*.yml"))
+WORKFLOWS = sorted([*(ROOT / ".github/workflows").glob("*.yml"), *CALLERS])
+ACTIONS = sorted([*(ROOT / "ha/actions").glob("*/action.yml"), *(ROOT / "python/actions").glob("*/action.yml")])
 BRANCH_TEST_BUILDS = ROOT / "ha" / "tools" / "branch_test_builds.jq"
 OWN = re.compile(r"uses: HairingX/workflows/([^@\s]+)@(\S+)")
+KINDS = ["ha", "python"]
 MAJOR = "v2"
 """The major version the callers use, which Publish moves."""
 
@@ -32,7 +36,7 @@ def _ids(paths: list[Path]) -> list[str]:
 
 def test_the_workflows_and_actions_are_found() -> None:
     assert len(WORKFLOWS) > 10
-    assert len(ACTIONS) == 2
+    assert len(ACTIONS) == 4
 
 
 @pytest.mark.parametrize("workflow", WORKFLOWS, ids=_ids(WORKFLOWS))
@@ -77,27 +81,55 @@ def test_the_reusable_workflows_are_called_by_their_callers() -> None:
         if "workflow_call" in workflow.read_text("utf-8") and workflow.name not in OWN_WORKFLOWS
     }
     assert reusable <= called
-    assert {f"ha/actions/{action.parent.name}" for action in ACTIONS} <= called
+    assert {action.parent.relative_to(ROOT).as_posix() for action in ACTIONS} <= called
 
 
-def test_the_shared_conventions_name_the_major_version_the_callers_use() -> None:
-    assert f"at `@{MAJOR}`" in (ROOT / "ha/template/CLAUDE.md").read_text("utf-8")
+@pytest.mark.parametrize("kind", KINDS)
+def test_the_shared_conventions_name_the_major_version_the_callers_use(kind: str) -> None:
+    assert f"at `@{MAJOR}`" in (ROOT / kind / "template/CLAUDE.md").read_text("utf-8")
 
 
-@pytest.mark.parametrize("caller", CALLERS, ids=_ids(CALLERS))
-def test_the_checks_a_ruleset_requires_keep_their_names(caller: Path) -> None:
+def _job_names(job: dict[str, Any]) -> set[str]:
+    """The names a job's checks get, one per combination of its matrix."""
+    name = str(job.get("name"))
+    matrix = cast(dict[str, Any], job.get("strategy", {}).get("matrix", {}))
+    names = {name}
+    for key, values in matrix.items():
+        names = {
+            each.replace(f"${{{{ matrix.{key} }}}}", str(value))
+            for each in names
+            for value in cast(list[Any], values)
+        }
+    return names
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_the_checks_a_ruleset_requires_keep_their_names(kind: str) -> None:
     """The ruleset requires checks by name; a job called through a reusable workflow gets a
     prefixed name, so a required check is a job of the caller itself."""
-    ruleset = json.loads((ROOT / "ha/template/.github/rulesets/main.json").read_text("utf-8"))
+    ruleset = json.loads((ROOT / kind / "template/.github/rulesets/main.json").read_text("utf-8"))
     rule = next(rule for rule in ruleset["rules"] if rule["type"] == "required_status_checks")
     required = {check["context"] for check in rule["parameters"]["required_status_checks"]}
+    callers = [
+        path
+        for template in (ROOT / "common/template", ROOT / kind / "template")
+        for path in (template / ".github/workflows").glob("*.yml")
+    ]
     names = {
-        str(job.get("name"))
-        for caller_file in CALLERS
-        for job in cast(dict[str, dict[str, Any]], yaml.safe_load(caller_file.read_text("utf-8"))["jobs"]).values()
+        name
+        for caller in callers
+        for job in cast(dict[str, dict[str, Any]], yaml.safe_load(caller.read_text("utf-8"))["jobs"]).values()
         if "uses" not in job
+        for name in _job_names(job)
     }
     assert required <= names
+
+
+def test_a_library_is_tested_on_every_python_it_supports() -> None:
+    tests = yaml.safe_load((ROOT / "python/template/.github/workflows/tests.yml").read_text("utf-8"))
+    release = yaml.safe_load((ROOT / ".github/workflows/python-release.yml").read_text("utf-8"))
+    for workflow in (tests, release):
+        assert tuple(workflow["jobs"]["test"]["strategy"]["matrix"]["python-version"]) == PYTHON_VERSIONS
 
 
 @pytest.mark.skipif(shutil.which("jq") is None, reason="jq is not installed")

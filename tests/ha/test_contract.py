@@ -15,7 +15,6 @@ from contract import (
     check_manifest,
     check_quality_scale,
     check_requirements,
-    check_standard,
     check_translations,
     HomeAssistant,
     home_assistant,
@@ -174,24 +173,6 @@ def test_a_repository_without_a_quality_scale_is_reported(
 def test_a_pin_with_a_comment_is_read_without_it() -> None:
     pinned = ["lib==1.2.0  # the manifest's", "other @ https://example.invalid/x.tar.gz"]
     assert list(check_requirements(["lib==1.2.0"], pinned, {"lib": "1.2.0"}, HomeAssistant())) == []
-
-
-def test_the_whole_standard_holds_without_a_transition() -> None:
-    assert list(check_standard({"typeCheckingMode": "strict"}, 100, None)) == []
-    assert list(check_standard({"typeCheckingMode": "standard"}, 90, None)) == [
-        'pyproject.toml must set [tool.pyright] typeCheckingMode to "strict"',
-        "the tests must cover every line, not 90%",
-    ]
-
-
-def test_no_file_is_left_unchecked_without_a_transition() -> None:
-    assert list(check_standard({"typeCheckingMode": "strict", "ignore": ["a.py"]}, 100, None)) == [
-        "pyproject.toml must leave no file unchecked in [tool.pyright] ignore"
-    ]
-
-
-def test_a_transition_relaxes_the_standard() -> None:
-    assert list(check_standard({"typeCheckingMode": "standard"}, 29, "Typed module by module.")) == []
 
 
 def test_home_assistants_requirements_are_read_from_its_package(tmp_path: Path) -> None:

@@ -35,16 +35,16 @@ runs:
         BRANCH: ${{ inputs.branch }}
         OWNER: ${{ github.repository_owner }}
       run: |
-        tools="$GITHUB_ACTION_PATH/../../tools"
+        common="$GITHUB_ACTION_PATH/../../../common/tools"
         python -m pip install packaging==26.3
         requirements="$RUNNER_TEMP/requirements.txt"
         cp requirements-test.txt "$requirements"
         if [[ -n "$BRANCH" && "$BRANCH" != "main" ]]; then
-          python "$tools/libraries.py" branch . "$OWNER" "$BRANCH" > "$RUNNER_TEMP/libraries"
+          python "$common/libraries.py" branch . "$OWNER" "$BRANCH" > "$RUNNER_TEMP/libraries"
           mapfile -t libraries < "$RUNNER_TEMP/libraries"
           if (( ${#libraries[@]} )); then
             printf 'Library from branch %s: %s\n' "$BRANCH" "${libraries[@]}"
-            python "$tools/libraries.py" requirements "$requirements" "${libraries[@]}"
+            python "$common/libraries.py" requirements "$requirements" "${libraries[@]}"
           fi
         fi
         python -m pip install -r "$requirements"
@@ -60,7 +60,7 @@ runs:
       run: |
         tools="$GITHUB_ACTION_PATH/../../tools"
         domain=$(python "$tools/repository.py" domain .)
-        coverage=$(python "$tools/repository.py" coverage .)
+        coverage=$(python "$GITHUB_ACTION_PATH/../../../common/tools/settings.py" coverage .)
         python -m pytest -m "not live" -q -o log_cli=false \
           --cov="custom_components.$domain" --cov-report=term-missing --cov-fail-under="$coverage"
 
@@ -71,4 +71,4 @@ runs:
     - name: Check that the shared files agree with the template
       if: inputs.template-check == 'true'
       shell: bash
-      run: python "$GITHUB_ACTION_PATH/../../tools/template.py" check .
+      run: python "$GITHUB_ACTION_PATH/../../../common/tools/template.py" check ha .

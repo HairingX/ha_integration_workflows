@@ -178,10 +178,10 @@ jobs:
       - name: Build the zip, with the version and the libraries set in the manifest
         run: |
           integration=$(python "$HA_TOOLS/repository.py" integration .)
-          python "$HA_TOOLS/libraries.py" branch . "$OWNER" "$BRANCH" > "$RUNNER_TEMP/libraries"
+          python "$COMMON_TOOLS/libraries.py" branch . "$OWNER" "$BRANCH" > "$RUNNER_TEMP/libraries"
           mapfile -t libraries < "$RUNNER_TEMP/libraries"
           python "$COMMON_TOOLS/release_version.py" write "$VERSION" "$integration/manifest.json"
-          python "$HA_TOOLS/libraries.py" manifest "$integration/manifest.json" "${libraries[@]}"
+          python "$COMMON_TOOLS/libraries.py" manifest "$integration/manifest.json" "${libraries[@]}"
           # Only the manifest changed, and nothing untracked is where the zip is built from.
           changed=$(git status --porcelain -- "$integration")
           if [[ "$changed" != " M $integration/manifest.json" ]]; then
