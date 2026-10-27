@@ -58,6 +58,10 @@ copies fixed (each has a test):
 | Test builds had no version without a draft | the patch after the last final release (from PowerView's copy) |
 | A library from a branch was installed over its pin | it takes the pin's place in the requirements (from PowerView's copy) |
 
+Before the first final release, Release Drafter has no published release to compare with: its
+draft says "No changes" and warns that it lacks a baseline. The first final release therefore
+says only that it is the initial release; every later one carries the draft's notes.
+
 ## Checks every integration's tests run
 
 `actions/tests` runs pyright strict, the tests with 100% coverage, `tools/contract.py` and
