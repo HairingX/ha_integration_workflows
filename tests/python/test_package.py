@@ -50,4 +50,14 @@ def test_a_library_downloaded_from_github_carries_its_version() -> None:
     template = TEMPLATES["python"]
     assert {".git_archival.txt", ".gitattributes"} <= set(files(template))
     assert ".git_archival.txt  export-subst" in (template / ".gitattributes").read_text("utf-8")
-    assert "describe-name: $Format:%(describe:tags=true" in (template / ".git_archival.txt").read_text("utf-8")
+    assert "describe-name: $Format:%(describe:tags=true" in (template / "git_archival.txt").read_text("utf-8")
+
+
+def test_the_template_keeps_the_archive_file_where_git_does_not_fill_it_in() -> None:
+    """Actions are downloaded as an archive of this repository: a template file named
+    .git_archival.txt next to the export-subst attribute would arrive filled in."""
+    from template import TEMPLATES, sources
+
+    template = TEMPLATES["python"]
+    assert not (template / ".git_archival.txt").exists()
+    assert sources(template)[".git_archival.txt"] == template / "git_archival.txt"
