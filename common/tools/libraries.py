@@ -51,8 +51,14 @@ def head(repository: str, branch: str) -> str | None:
 
 
 def branch_requirements(root: Path, owner: str, branch: str) -> list[str]:
-    """A requirement for each library that has `branch`, pinned to its current commit."""
+    """A requirement for each library that has `branch`, pinned to its current commit.
+
+    Dependabot's branches are left out: it names a branch after the update, so two repositories
+    it updates alike share a branch name without being developed together.
+    """
     found: list[str] = []
+    if branch.startswith("dependabot/"):
+        return found
     for library in libraries(root):
         repository = f"https://github.com/{owner}/{library}"
         commit = head(repository, branch)

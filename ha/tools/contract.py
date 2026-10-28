@@ -227,6 +227,33 @@ def check_requirements(
             yield f"requirements-test.txt must pin {text!r}, as the manifest does"
 
 
+def check_test_pins(requirements: list[str], pinned: list[str], core: HomeAssistant) -> Iterator[str]:
+    """The tests run Home Assistant's version of every other package it pins or bounds.
+
+    A library's own requirements share Home Assistant's environment as the manifest's do, so the
+    tests run the version Home Assistant's own integrations pin, and one its constraints admit.
+    """
+    required = {canonicalize_name(Requirement(text).name) for text in requirements}
+    for requirement in _requirements(pinned):
+        name = canonicalize_name(requirement.name)
+        exact = [s.version for s in requirement.specifier if s.operator == "=="]
+        if requirement.url or name in required or len(exact) != 1:
+            continue
+        theirs = core.pins.get(name)
+        if theirs and exact[0] not in theirs:
+            yield (
+                f"requirements-test.txt pins {requirement.name} {exact[0]}, but Home Assistant's own "
+                f"integrations pin {', '.join(sorted(theirs))}, the version the tests must run"
+            )
+            continue
+        constraint = core.constraints.get(name)
+        if constraint is not None and not constraint.contains(exact[0], prereleases=True):
+            yield (
+                f"requirements-test.txt pins {requirement.name} {exact[0]}, which Home Assistant's "
+                f"package constraints ({requirement.name}{constraint}) exclude"
+            )
+
+
 def check_quality_scale(rules: Mapping[str, Any]) -> Iterator[str]:
     """The quality scale states every rule, and a reason for each one not done."""
     for rule in sorted(QUALITY_SCALE_RULES - set(rules)):
@@ -293,11 +320,13 @@ def check(root: Path) -> list[str]:
     translations = {
         path.stem: _json(path) for path in sorted((directory / "translations").glob("*.json"))
     }
+    core = _installed_home_assistant()
     errors += [
         *check_standard(tool(root, "pyright"), coverage(root), transition(root)),
         *check_manifest(manifest),
         *check_hacs(_json(root / "hacs.json"), name, _installed("homeassistant")),
-        *check_requirements(requirements, pinned, installed, _installed_home_assistant()),
+        *check_requirements(requirements, pinned, installed, core),
+        *check_test_pins(requirements, pinned, core),
         *check_quality_scale(rules),
         *check_translations(translations),
     ]
