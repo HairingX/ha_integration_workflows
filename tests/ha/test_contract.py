@@ -21,6 +21,8 @@ from contract import (
     check_translations,
     HomeAssistant,
     home_assistant,
+    home_assistant_pins,
+    requirement_closure,
     released,
 )
 
@@ -275,3 +277,32 @@ def test_a_librarys_requirement_its_constraints_exclude_is_refused() -> None:
 def test_the_manifests_own_requirements_and_unpinned_lines_are_left_to_their_check() -> None:
     pinned = ["lxml==6.1.3", "beautifulsoup4>=4", "lib @ https://example.com/lib.tar.gz"]
     assert list(check_test_pins(["lxml>=5"], pinned, SCRAPE)) == []
+
+
+REQUIRES: dict[str, list[str]] = {
+    "aula-lib": ["beautifulsoup4>=4.12", "mitid-lib>=0.0.1", "requests>=2.31"],
+    "mitid-lib": ["lxml>=5", "beautifulsoup4>=4.12", 'pytest; extra == "test"', 'colorama; sys_platform == "win32"'],
+    "beautifulsoup4": ["soupsieve>1.2"],
+}
+
+
+def test_the_closure_follows_every_requirement_that_applies() -> None:
+    assert requirement_closure(["aula_lib==1.0.0"], REQUIRES.get) == {
+        "aula-lib", "beautifulsoup4", "lxml", "mitid-lib", "requests", "soupsieve"
+    }
+
+
+def test_home_assistants_pin_of_each_shared_package_is_installed() -> None:
+    assert home_assistant_pins(["aula_lib==1.0.0"], SCRAPE, REQUIRES.get) == [
+        "beautifulsoup4==4.13.3", "lxml==6.1.2"
+    ]
+
+
+def test_the_highest_of_several_pins_is_taken() -> None:
+    core = HomeAssistant(pins={"lxml": frozenset({"6.1.2", "6.0.0"})})
+    assert home_assistant_pins(["lxml>=5"], core, REQUIRES.get) == ["lxml==6.1.2"]
+
+
+def test_a_package_home_assistant_requires_itself_is_left_to_it() -> None:
+    core = HomeAssistant(dependencies=frozenset({"requests"}), pins={"requests": frozenset({"2.0"})})
+    assert home_assistant_pins(["aula_lib==1.0.0"], core, REQUIRES.get) == []
