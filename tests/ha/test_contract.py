@@ -1,6 +1,7 @@
 """Tests of what every integration's repository promises."""
 
 import json
+import sys
 from pathlib import Path
 
 from packaging.specifiers import SpecifierSet
@@ -10,6 +11,7 @@ import pytest
 import contract
 from contract import (
     QUALITY_SCALE_RULES,
+    installed_version,
     check,
     check_hacs,
     check_manifest,
@@ -231,3 +233,19 @@ def test_a_pin_home_assistants_constraints_exclude_is_refused() -> None:
     assert list(check_requirements(["pymodbus==3.9.0"], ["pymodbus==3.9.0"], {"pymodbus": "3.9.0"}, core)) == [
         "the manifest pins 'pymodbus==3.9.0', which Home Assistant's package constraints (pymodbus==3.11.2) exclude"
     ]
+
+
+def test_a_library_installed_from_a_url_is_no_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A branch's source download has no tags, and its version can read as a release, such as 0.0."""
+    site = tmp_path / "site"
+    for name, direct in (("from_branch", True), ("from_index", False)):
+        info = site / f"{name}-0.0.dist-info"
+        info.mkdir(parents=True)
+        (info / "METADATA").write_text(f"Metadata-Version: 2.1\nName: {name}\nVersion: 0.0\n", "utf-8")
+        if direct:
+            (info / "direct_url.json").write_text('{"url": "https://example.invalid/a.tar.gz", "archive_info": {}}', "utf-8")
+    monkeypatch.setattr(sys, "path", [str(site), *sys.path])
+    assert installed_version("from_branch") == "0.0+url"
+    assert not released("0.0+url")
+    assert installed_version("from_index") == "0.0"
+    assert installed_version("not_installed_anywhere") is None

@@ -61,11 +61,23 @@ def _json(path: Path) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(path.read_text("utf-8")))
 
 
-def _installed(name: str) -> str | None:
+def installed_version(name: str) -> str | None:
+    """The version of `name` installed, marked as a local build when it came from a URL.
+
+    A library taken from a branch is installed from GitHub's source download (PEP 610 records
+    it in direct_url.json): its version, worked out without the tags, can look like a release.
+    """
     try:
-        return importlib.metadata.version(name)
+        distribution = importlib.metadata.distribution(name)
     except importlib.metadata.PackageNotFoundError:
         return None
+    if distribution.read_text("direct_url.json") is not None:
+        return f"{distribution.version}+url"
+    return distribution.version
+
+
+def _installed(name: str) -> str | None:
+    return installed_version(name)
 
 
 def released(version: str) -> bool:
