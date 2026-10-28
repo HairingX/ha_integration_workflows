@@ -40,3 +40,14 @@ def test_a_repository_without_src_is_refused(tmp_path: Path) -> None:
 def test_a_project_without_a_name_is_refused(tmp_path: Path, pyproject: str) -> None:
     with pytest.raises(SystemExit):
         name(_repository(tmp_path, pyproject=pyproject))
+
+
+def test_a_library_downloaded_from_github_carries_its_version() -> None:
+    """A development branch is installed from GitHub's source download, which has no git
+    metadata; setuptools-scm then reads the version from the archive file git fills in."""
+    from template import TEMPLATES, files
+
+    template = TEMPLATES["python"]
+    assert {".git_archival.txt", ".gitattributes"} <= set(files(template))
+    assert ".git_archival.txt  export-subst" in (template / ".gitattributes").read_text("utf-8")
+    assert "describe-name: $Format:%(describe:tags=true" in (template / ".git_archival.txt").read_text("utf-8")
