@@ -1,7 +1,9 @@
 """What every integration's repository promises, checked against the installed environment.
 
-    contract.py ROOT     checks the repository at ROOT, with the tests' packages installed, and
-                         fails with one error per broken promise
+    contract.py ROOT        checks the repository at ROOT, with the tests' packages installed,
+                            and fails with one error per broken promise
+    contract.py pins ROOT   prints, one per line, Home Assistant's pin of each package the
+                            manifest's requirements install that its own integrations pin
 
 The promises: the manifest says 0.0.0, as the version lives in the release's tag and zip; HACS
 installs a zip named after the domain and requires the Home Assistant the tests run; every
@@ -14,7 +16,7 @@ import importlib.metadata
 import importlib.util
 import json
 import sys
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -162,6 +164,48 @@ def _installed_home_assistant() -> HomeAssistant:
     if spec is None or spec.origin is None:
         return HomeAssistant()
     return home_assistant(Path(spec.origin).parent, importlib.metadata.requires("homeassistant") or [])
+
+
+def requirement_closure(
+    requirements: list[str], requires: Callable[[str], list[str] | None]
+) -> set[str]:
+    """The canonical names of `requirements` and of everything they require, as `requires` reads
+    each package's own requirements; extras and markers that do not apply are left out."""
+    found: set[str] = set()
+    pending = list(_requirements(requirements))
+    while pending:
+        requirement = pending.pop()
+        if requirement.marker is not None and not requirement.marker.evaluate({"extra": ""}):
+            continue
+        name = canonicalize_name(requirement.name)
+        if name in found:
+            continue
+        found.add(name)
+        pending += _requirements(requires(name) or [])
+    return found
+
+
+def _requires(name: str) -> list[str] | None:
+    try:
+        return importlib.metadata.requires(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def home_assistant_pins(
+    requirements: list[str], core: HomeAssistant, requires: Callable[[str], list[str] | None]
+) -> list[str]:
+    """Home Assistant's pin of each package `requirements` install that its own integrations pin.
+
+    Such a package is installed at Home Assistant's version, as Home Assistant installs it, so the
+    tests run what a user's Home Assistant may run; one Home Assistant itself requires is left to
+    it.
+    """
+    return [
+        f"{name}=={max(core.pins[name], key=Version)}"
+        for name in sorted(requirement_closure(requirements, requires))
+        if name in core.pins and name not in core.dependencies
+    ]
 
 
 def check_requirements(
@@ -346,6 +390,11 @@ def main(arguments: list[str]) -> None:
             if errors:
                 sys.exit(1)
             print("Every promise of the repository holds.")
+        case ["pins", root]:
+            manifest = _json(integration(Path(root)) / "manifest.json")
+            requirements = cast(list[str], manifest.get("requirements", []))
+            for pin in home_assistant_pins(requirements, _installed_home_assistant(), _requires):
+                print(pin)
         case _:
             sys.exit(__doc__)
 
