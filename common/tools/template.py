@@ -30,6 +30,10 @@ PREVIOUS_MARKERS = (
     ("<!-- BEGIN HairingX/workflows: shared by every integration; edit it there -->", BEGIN),
 )
 """The markers of the repository's former name, which sync replaces."""
+KEPT_AS = {"git_archival.txt": ".git_archival.txt"}
+"""Template files kept here under another name than the repository's. Git fills in
+.git_archival.txt in every download of a repository that marks it export-subst, this one's own
+included - and actions are downloaded - so the template keeps it where no attribute reaches."""
 NOT_OWN = (".github/scripts", ".github/actions", ".github/release-drafter.yml")
 """What the repository must not have: it comes from this repository, where Release Drafter's
 configuration is read from too."""
@@ -41,6 +45,7 @@ def sources(template: Path, common: Path = COMMON) -> dict[str, Path]:
     for root in (common, template):
         for path in root.rglob("*"):
             name = path.relative_to(root).as_posix()
+            name = KEPT_AS.get(name, name)
             if path.is_file() and not (root == template and name == SECTION):
                 if name in found:
                     sys.exit(f"::error::{name} is in both {common} and {template}")
