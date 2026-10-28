@@ -5,8 +5,11 @@ updates:
   - package-ecosystem: github-actions
     directories:
       - /
-      - /actions/*
-      - /template
+      - /ha/actions/*
+      - /python/actions/*
+      - /common/template
+      - /ha/template
+      - /python/template
     schedule:
       interval: weekly
     labels:
