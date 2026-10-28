@@ -17,6 +17,7 @@ from contract import (
     check_manifest,
     check_quality_scale,
     check_requirements,
+    check_test_pins,
     check_translations,
     HomeAssistant,
     home_assistant,
@@ -249,3 +250,28 @@ def test_a_library_installed_from_a_url_is_no_release(tmp_path: Path, monkeypatc
     assert not released("0.0+url")
     assert installed_version("from_index") == "0.0"
     assert installed_version("not_installed_anywhere") is None
+
+
+def test_the_tests_run_home_assistants_version_of_a_librarys_requirement() -> None:
+    pinned = ["aula_lib==1.0.0", "beautifulsoup4==4.13.3", "lxml==6.1.2", "pyright==1.1.414"]
+    assert list(check_test_pins(["aula_lib==1.0.0"], pinned, SCRAPE)) == []
+
+
+def test_a_librarys_requirement_pinned_past_home_assistants_version_is_refused() -> None:
+    assert list(check_test_pins([], ["beautifulsoup4==4.15.0"], SCRAPE)) == [
+        "requirements-test.txt pins beautifulsoup4 4.15.0, but Home Assistant's own integrations "
+        "pin 4.13.3, the version the tests must run"
+    ]
+
+
+def test_a_librarys_requirement_its_constraints_exclude_is_refused() -> None:
+    core = HomeAssistant(constraints={"pymodbus": SpecifierSet(">=3.11")})
+    assert list(check_test_pins([], ["pymodbus==3.9.0", "pymodbus-extra==1"], core)) == [
+        "requirements-test.txt pins pymodbus 3.9.0, which Home Assistant's package constraints "
+        "(pymodbus>=3.11) exclude"
+    ]
+
+
+def test_the_manifests_own_requirements_and_unpinned_lines_are_left_to_their_check() -> None:
+    pinned = ["lxml==6.1.3", "beautifulsoup4>=4", "lib @ https://example.com/lib.tar.gz"]
+    assert list(check_test_pins(["lxml>=5"], pinned, SCRAPE)) == []

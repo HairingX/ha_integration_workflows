@@ -45,6 +45,17 @@ def test_the_branch_is_looked_up_by_its_full_name(
     assert asked == [("https://github.com/Owner/base_lib", "feature/a/b")]
 
 
+def test_a_dependabot_branch_takes_no_library_from_a_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def head(repository: str, branch: str) -> str:
+        return "abc123"
+
+    monkeypatch.setattr(libraries, "head", head)
+    root = _repository(tmp_path, ["base_lib"])
+    assert branch_requirements(root, "Owner", "dependabot/pip/beautifulsoup4-4.15.0") == []
+
+
 def test_a_branch_library_takes_the_place_of_its_pin() -> None:
     lines = [
         "# Pinned.",
