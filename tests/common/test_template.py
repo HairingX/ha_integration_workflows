@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from template import BEGIN, COMMON, END, PREVIOUS_MARKERS, TEMPLATES, differences, files, shared_section, sources, sync
+from template import BEGIN, COMMON, END, PREVIOUS_MARKERS, TEMPLATES, differences, files, main, shared_section, sources, sync
 
 
 @pytest.fixture
@@ -88,6 +88,33 @@ def test_the_shared_template_is_complete() -> None:
         ".github/workflows/tests.yml",
         ".github/workflows/validate.yml",
     }
+
+
+def test_the_cards_template_is_complete() -> None:
+    assert (TEMPLATES["card"] / "CLAUDE.md").is_file()
+    assert files(TEMPLATES["card"]) == [
+        ".github/dependabot.yml",
+        ".github/release.yml",
+        ".github/rulesets/branch-names.json",
+        ".github/rulesets/main.json",
+        ".github/workflows/close-inactive-issues.yml",
+        ".github/workflows/release-drafter.yml",
+        ".github/workflows/release.yml",
+        ".github/workflows/test-build-cleanup.yml",
+        ".github/workflows/test-build.yml",
+        ".github/workflows/tests.yml",
+        ".github/workflows/validate.yml",
+    ]
+
+
+def test_the_command_line_checks_and_syncs_a_card(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    root = tmp_path / "card"
+    root.mkdir()
+    with pytest.raises(SystemExit):
+        main(["check", "card", str(root)])
+    main(["sync", "card", str(root)])
+    main(["check", "card", str(root)])
+    assert "The repository agrees with the template." in capsys.readouterr().out
 
 
 def test_sync_refuses_a_section_with_one_marker(tmp_path: Path, template: Path, common: Path) -> None:

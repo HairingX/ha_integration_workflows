@@ -35,13 +35,13 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .workflows
           persist-credentials: false
-          sparse-checkout: ha/tools/branch_test_builds.jq
+          sparse-checkout: common/tools/branch_test_builds.jq
           sparse-checkout-cone-mode: false
 
       - name: Remove them
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq "$(cat .workflows/ha/tools/branch_test_builds.jq)" > "$RUNNER_TEMP/old"
+            --jq "$(cat .workflows/common/tools/branch_test_builds.jq)" > "$RUNNER_TEMP/old"
           while read -r old; do
             echo "Removing $old"
             if ! gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes; then

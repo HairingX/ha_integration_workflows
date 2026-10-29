@@ -49,4 +49,5 @@ jobs:
       - name: Lint the workflows and the callers' templates
         run: |
           actionlint
-          actionlint ha/template/.github/workflows/*.yml python/template/.github/workflows/*.yml common/template/.github/workflows/*.yml
+          actionlint ha/template/.github/workflows/*.yml python/template/.github/workflows/*.yml \
+            card/template/.github/workflows/*.yml common/template/.github/workflows/*.yml

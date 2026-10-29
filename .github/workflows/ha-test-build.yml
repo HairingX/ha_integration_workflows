@@ -222,7 +222,7 @@ jobs:
       - name: Replace the branch's previous test builds
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq "$(cat "$HA_TOOLS/branch_test_builds.jq")" > "$RUNNER_TEMP/old"
+            --jq "$(cat "$COMMON_TOOLS/branch_test_builds.jq")" > "$RUNNER_TEMP/old"
           while read -r old; do
             echo "Removing $old"
             if ! gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes; then

@@ -1,16 +1,18 @@
 # Conventions for this repository
 
 The workflows, actions and release tools every repository of the owner shares - the Home
-Assistant integrations, and the Python libraries they use - and the templates of the files each
-of them keeps a copy of. How and why it is built as it is: `docs/design.md`.
+Assistant integrations, the Python libraries they use, and the Home Assistant dashboard cards -
+and the templates of the files each of them keeps a copy of. How and why it is built as it is:
+`docs/design.md`.
 
 ## What lives here
 
 - `common/`: what every kind of repository shares.
   - `common/tools/`: the version rules (`release_version.py`), what a repository says about
     itself under `[tool.hairingx-workflows]` in its `pyproject.toml` (`settings.py`), the
-    libraries taken from a branch (`libraries.py`), and the template check and sync
-    (`template.py check|sync KIND ROOT`).
+    libraries taken from a branch (`libraries.py`), the template check and sync
+    (`template.py check|sync KIND ROOT`), and the jq filter that finds a branch's test builds
+    (`branch_test_builds.jq`).
   - `common/release-drafter.yml`: Release Drafter's configuration.
   - `common/template/`: the files every repository keeps word for word: the release-notes
     categories, the branch-names ruleset, and the Release Drafter and inactive-issues workflows.
@@ -25,14 +27,18 @@ of them keeps a copy of. How and why it is built as it is: `docs/design.md`.
 - `python/`: the Python libraries', laid out the same: `python/actions/`, `python/tools/` (the
   package's names, and the library's contract) and `python/template/`. A library publishes to
   PyPI from its own Release workflow, as PyPI's trusted publishing takes no reusable workflow.
+- `card/`: the dashboard cards', TypeScript bundled into one ES module that HACS installs from a
+  release's assets: `card/actions/tests` and `card/actions/hacs`, `card/tools/` (the bundle and
+  the card's contract) and `card/template/`, with `card/template/CLAUDE.md`.
 - `.github/workflows/`: the reusable workflows, prefixed by the kind they serve -
   `ha-release.yml`, `ha-test-build.yml`, `ha-test-build-cleanup.yml`, `python-release.yml`,
-  `python-github-release.yml` - and `release-drafter.yml`, shared by every kind. GitHub finds a
+  `python-github-release.yml`, `card-release.yml`, `card-test-build.yml` - and
+  `release-drafter.yml` and `test-build-cleanup.yml`, shared by every kind. GitHub finds a
   reusable workflow only directly in that directory. Each checks out this repository at its own
   commit (`job.workflow_repository`, `job.workflow_sha`) for its tools. `ci.yml` and
   `publish.yml` are this repository's own.
-- `tests/`: `tests/common/`, `tests/ha/`, `tests/python/`, and `tests/test_workflows.py` for
-  every workflow and action.
+- `tests/`: `tests/common/`, `tests/ha/`, `tests/python/`, `tests/card/`, and
+  `tests/test_workflows.py` for every workflow and action.
 
 ## Changing anything
 
@@ -48,5 +54,5 @@ of them keeps a copy of. How and why it is built as it is: `docs/design.md`.
    before until each is synced.
 
 The comments, docstrings, tests and branch conventions are the repositories' own, in
-`ha/template/CLAUDE.md` and `python/template/CLAUDE.md`. Python 3.14; pyright strict reports 0
-errors, with no `# type: ignore`.
+`ha/template/CLAUDE.md`, `python/template/CLAUDE.md` and `card/template/CLAUDE.md`. Python 3.14;
+pyright strict reports 0 errors, with no `# type: ignore`.

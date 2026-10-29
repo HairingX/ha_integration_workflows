@@ -8,8 +8,8 @@ found in one stayed in the others. Here the logic exists once; each integration 
 identical files that call it, and its tests fail when those files differ from the template.
 
 The Python libraries the integrations use share most of it: the versions, release candidates,
-Release Drafter, branch names and release notes. So every kind of repository is served from this
-one repository, with one version:
+Release Drafter, branch names and release notes, and so do the dashboard cards. So every kind of
+repository is served from this one repository, with one version:
 
 - `common/`: what every kind shares - the version rules (`common/tools/release_version.py`),
   Release Drafter's configuration, and the template files every repository keeps
@@ -21,8 +21,12 @@ one repository, with one version:
   trusted publishing takes no reusable workflow (it is bound to the repository's own workflow
   file), so the library's `release.yml` calls the shared release, uploads to PyPI itself, and
   calls the shared GitHub release after.
-- `.github/workflows/`: the reusable workflows, prefixed by kind (`ha-release.yml`); GitHub
-  finds a reusable workflow only directly in that directory, never in a subdirectory.
+- `card/`: the Home Assistant dashboard cards'. A card's Release is the integrations' Release
+  with a bundle instead of a zip: one ES module, built with the version embedded and attached to
+  the release, from where HACS installs it.
+- `.github/workflows/`: the reusable workflows, prefixed by kind (`ha-release.yml`), or by none
+  when every kind shares them (`release-drafter.yml`, `test-build-cleanup.yml`); GitHub finds a
+  reusable workflow only directly in that directory, never in a subdirectory.
 
 One version (`vX.Y.Z`, and the major `vX` the callers use) rather than one per kind: GitHub,
 Dependabot and the other tools of Actions expect a repository's tags to be its versions. A change
@@ -104,6 +108,51 @@ A library taken from its branch replaces its pin, rather than being installed ov
 released library pins another one, a branch of only the other one may then not resolve: give the
 first library a branch of the same name too.
 
+## A dashboard card
+
+A card is TypeScript and lit, bundled by vite into one ES module. What differs between cards is
+read from the card's own files: the bundle is `dist/<filename>`, `filename` being `hacs.json`'s;
+everything else - code, tests, `package.json`, `package-lock.json`, `hacs.json`, README, the top
+of CLAUDE.md - is the card's own. Cards have no libraries developed alongside them, so they keep
+no "Libraries released and pinned" check: their packages come from npm, locked.
+
+**The version.** `package.json` says `0.0.0`, as the integrations' manifest does, and the build
+embeds the version the environment variable `CARD_VERSION` gives it. Release and Test build build
+the bundle with the version they publish and refuse one that does not hold it as a whole word: a
+minifier may fold it into a longer string, such as the banner a card logs, so it is not looked for
+in quotes.
+
+**Where HACS finds the card.** HACS looks for the file `filename` names first among the assets of
+the newest final release (the newest pre-release for those who switch beta versions on), then at
+the root of the repository, then in `dist/`. So `dist/` is built, never committed, and the release
+attaches the bundle: what a user installs is what Release built and checked. `content_in_root`
+would make HACS skip the release's assets, so the contract refuses it.
+
+**HACS validation before the first final release.** HACS refuses a card repository it finds no
+bundle in, and with `dist/` uncommitted it finds one only among a final release's assets. The
+validation would then fail on every pull request and on the first Release itself, which it must
+precede. `card/actions/hacs` therefore runs it only once a final release exists, and says so with
+a notice before; the repository's contract checks `hacs.json` meanwhile, and the daily run
+validates the rest from the first final release on.
+
+**Install scripts.** npm runs the install scripts of every package it installs. In Release and
+Test build, the bundle is built in a job of its own, with a read-only token and no credentials in
+its checkout, and handed to the job that tags and publishes as an artifact: no package's script
+ever sees a token that can push.
+
+**Checks every card's tests run.** `card/actions/tests` runs `npm ci`, then the card's own
+scripts - `lint`, `typecheck`, `test`, `build` - with vitest's coverage thresholds set to 100%
+from the command line, whatever the card's configuration says; checks that the build wrote the
+bundle; and runs `card/tools/card_contract.py` and `common/tools/template.py check card`. The
+contract: `package.json` and `package-lock.json` say `0.0.0`, `package.json` has the four
+scripts, `hacs.json` names the card, the bundle and the oldest Home Assistant it supports and
+sets neither `zip_release` nor `content_in_root`, and nothing under `dist/` is tracked.
+
+**Test build cleanup.** Removing a branch's test builds knows nothing of the kind, so the cards
+call the shared `test-build-cleanup.yml`. The integrations' copies call
+`ha-test-build-cleanup.yml` until the next major version moves them; a test holds the two to the
+same jobs.
+
 ## On the way to the standard
 
 An integration far from the standard - Aula, whose code was written before it - is not left red
@@ -128,3 +177,13 @@ That the floor only rises is a rule of review, not a check.
 - gh 2.89: `gh release create` with an asset creates a draft, uploads, then publishes; lookups
   by tag consider drafts.
 - The quality scale rules equal hassfest's `ALL_RULES` at Home Assistant 2026.10.4.
+- HACS (`repositories/plugin.py`, `update_filenames`): a dashboard card's file is the release
+  asset `filename` names, in the newest release HACS lists, unless `content_in_root`; else
+  `filename` at the root, then in `dist/`. Without one, validation fails with "Repository
+  structure ... is not compliant". The HACS action takes `category: plugin` and reads
+  `REPOSITORY_REF`, as for an integration; an empty `REPOSITORY_REF` would replace the event's.
+- GitHub's `releases/latest` returns the newest release that is neither a draft nor a
+  pre-release, as HACS's own choice is without beta versions.
+- vitest 5: `--coverage.enabled=true --coverage.thresholds.100=true`, passed after `npm test --`,
+  enables coverage and fails the run below 100% of lines, branches, functions and statements,
+  whether or not the card's script already says `--coverage`.

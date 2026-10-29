@@ -1,7 +1,8 @@
 """The files every repository of a kind shares, word for word, with the templates.
 
     template.py check KIND ROOT   fails with one error per file of the repository at ROOT that
-                                  differs from the template of KIND ("ha" or "python")
+                                  differs from the template of KIND ("ha", "python"
+                                  or "card")
     template.py sync KIND ROOT    makes the repository at ROOT agree with that template
 
 Every file under common/template/ and <KIND>/template/ is copied as it is, except
@@ -19,7 +20,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 COMMON = ROOT / "common" / "template"
 """The files every repository of the owner shares, whatever its kind."""
-TEMPLATES = {"ha": ROOT / "ha" / "template", "python": ROOT / "python" / "template"}
+TEMPLATES = {
+    "ha": ROOT / "ha" / "template",
+    "python": ROOT / "python" / "template",
+    "card": ROOT / "card" / "template",
+}
 """The files each kind of repository shares besides the common ones."""
 SECTION = "CLAUDE.md"
 BEGIN = "<!-- BEGIN HairingX/workflows: shared; edit it there -->"
