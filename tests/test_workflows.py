@@ -233,6 +233,29 @@ def test_a_card_publishes_the_bundle_built_with_its_version_after_every_check(wo
     assert 'gh release upload "$TAG" "$BUNDLE"' in published
 
 
+@pytest.mark.parametrize("workflow", ["card-release.yml", "card-test-build.yml"])
+def test_a_cards_lint_never_sees_the_tools_checked_out_beside_it(workflow: str) -> None:
+    """A card's lint checks every file under its directory, and the tools are not the card's."""
+    for name, job in cast(dict[str, dict[str, Any]], _workflow(workflow)["jobs"]).items():
+        tests = [step for step in _steps(job) if "card/actions/tests" in str(step.get("uses", ""))]
+        if not tests:
+            continue
+        checkouts = [step["with"] for step in _steps(job) if str(step.get("uses", "")).startswith("actions/checkout@")]
+        card = [checkout.get("path", ".") for checkout in checkouts if "repository" not in checkout]
+        tools = [checkout["path"] for checkout in checkouts if "repository" in checkout]
+        assert card == [tests[0]["with"]["path"]], name
+        assert all(not tool.startswith(f"{card[0]}/") and card[0] != "." for tool in tools), name
+
+
+def test_the_cards_tests_run_where_the_card_is_checked_out() -> None:
+    action = yaml.safe_load((ROOT / "card/actions/tests/action.yml").read_text("utf-8"))
+    for step in action["runs"]["steps"]:
+        if "run" in step:
+            assert step["working-directory"] == "${{ inputs.path }}", step["name"]
+    node = next(step for step in action["runs"]["steps"] if str(step.get("uses", "")).startswith("actions/setup-node@"))
+    assert node["with"]["cache-dependency-path"] == "${{ inputs.path }}/package-lock.json"
+
+
 def test_the_cards_tests_hold_it_to_full_coverage_whatever_its_configuration() -> None:
     script = (ROOT / "card/actions/tests/action.yml").read_text("utf-8")
     assert "npm test -- --coverage.enabled=true --coverage.thresholds.100=true" in script

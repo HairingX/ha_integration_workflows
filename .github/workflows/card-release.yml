@@ -165,6 +165,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.sha }}
+          path: card
           persist-credentials: false
 
       - name: Check out the release tools of this workflow's own commit
@@ -178,6 +179,7 @@ jobs:
       - name: Tests and type check
         uses: ./.workflows/card/actions/tests
         with:
+          path: card
           template-check: "false"
 
   hacs:

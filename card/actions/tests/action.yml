@@ -6,6 +6,12 @@ description: >-
   repository must already be checked out.
 
 inputs:
+  path:
+    description: >-
+      Where the card is checked out. A workflow that checks out its own tools beside the card
+      puts the card in a directory of its own, so that the card's lint sees only the card.
+    required: false
+    default: "."
   template-check:
     description: >-
       Whether to check that the shared files agree with the template. Release and Test build
@@ -22,6 +28,7 @@ runs:
       with:
         node-version: "22"
         cache: npm
+        cache-dependency-path: ${{ inputs.path }}/package-lock.json
 
     # The contract and the template check are Python, as every kind's are.
     - name: Set up Python
@@ -31,35 +38,42 @@ runs:
 
     - name: Install
       shell: bash
+      working-directory: ${{ inputs.path }}
       run: |
         python -m pip install packaging==26.3
         npm ci
 
     - name: Lint
       shell: bash
+      working-directory: ${{ inputs.path }}
       run: npm run lint
 
     - name: Type check
       shell: bash
+      working-directory: ${{ inputs.path }}
       run: npm run typecheck
 
     # Every line, branch, function and statement of the card is covered, and stays so, whatever
     # the repository's own configuration says.
     - name: Test
       shell: bash
+      working-directory: ${{ inputs.path }}
       run: npm test -- --coverage.enabled=true --coverage.thresholds.100=true
 
     - name: Build
       shell: bash
+      working-directory: ${{ inputs.path }}
       run: |
         npm run build
         python "$GITHUB_ACTION_PATH/../../tools/bundle.py" check . 0.0.0
 
     - name: Check the repository's contract
       shell: bash
+      working-directory: ${{ inputs.path }}
       run: python "$GITHUB_ACTION_PATH/../../tools/card_contract.py" .
 
     - name: Check that the shared files agree with the template
       if: inputs.template-check == 'true'
       shell: bash
+      working-directory: ${{ inputs.path }}
       run: python "$GITHUB_ACTION_PATH/../../../common/tools/template.py" check card .
