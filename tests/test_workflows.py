@@ -183,3 +183,12 @@ def test_every_script_of_an_action_passes_shellcheck(action: Path, tmp_path: Pat
         script.write_text(f"#!/bin/bash\nset -eo pipefail\n{step['run']}", "utf-8")
         result = subprocess.run(["shellcheck", str(script)], capture_output=True, text=True)
         assert result.returncode == 0, result.stdout
+
+
+@pytest.mark.parametrize("action", [ROOT / "ha/actions/tests/action.yml", ROOT / "python/actions/tests/action.yml"])
+def test_the_tests_install_a_libraries_branch_in_place_of_its_pin(action: Path) -> None:
+    """Installing the pins first fails where the branch needs what only a library's branch has."""
+    script = action.read_text()
+    assert '"$common/libraries.py" requirements "$requirements"' in script
+    assert "-r requirements-test.txt" not in script
+    assert script.index('libraries.py" requirements') < script.index('-r "$requirements"')

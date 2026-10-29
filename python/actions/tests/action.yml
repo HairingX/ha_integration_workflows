@@ -1,7 +1,7 @@
 name: Tests and type check
 description: >-
   Installs the package and what requirements-test.txt pins - on a development branch with the
-  libraries' branch of the same name over their release - then runs pyright strict, the tests
+  libraries' branch of the same name in place of their release - then runs pyright strict, the tests
   with full coverage, the repository's contract and the template check. The repository must
   already be checked out, with its tags.
 
@@ -39,15 +39,19 @@ runs:
       run: |
         common="$GITHUB_ACTION_PATH/../../../common/tools"
         python -m pip install packaging==26.3
-        python -m pip install . -r requirements-test.txt
+        # A library's branch replaces its pin before anything is installed: the package on this
+        # branch may require what only that branch has.
+        requirements="$RUNNER_TEMP/requirements.txt"
+        cp requirements-test.txt "$requirements"
         if [[ -n "$BRANCH" && "$BRANCH" != "main" ]]; then
           python "$common/libraries.py" branch . "$OWNER" "$BRANCH" > "$RUNNER_TEMP/libraries"
           mapfile -t libraries < "$RUNNER_TEMP/libraries"
           if (( ${#libraries[@]} )); then
             printf 'Library from branch %s: %s\n' "$BRANCH" "${libraries[@]}"
-            python -m pip install "${libraries[@]}"
+            python "$common/libraries.py" requirements "$requirements" "${libraries[@]}"
           fi
         fi
+        python -m pip install . -r "$requirements"
 
     - name: Type check (pyright strict)
       shell: bash
