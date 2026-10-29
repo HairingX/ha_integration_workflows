@@ -1,0 +1,52 @@
+name: Test build cleanup
+
+# Called by a repository's Test build cleanup workflow: removes a branch's test builds, release
+# and tag, once its pull request is closed or the branch is deleted. HACS reads only the newest
+# 30 releases, so old test builds would push real releases out of that list.
+on:
+  workflow_call:
+
+permissions: {}
+
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  cleanup:
+    name: Remove the branch's test builds
+    # A fork's pull request gets a read-only token, and its branch has no test builds here.
+    if: >-
+      (github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name == github.repository)
+      || (github.event_name == 'delete' && github.event.ref_type == 'branch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: ${{ github.event.pull_request.head.ref || github.event.ref }}
+    steps:
+      - name: Check out the release tools of this workflow's own commit
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .workflows
+          persist-credentials: false
+          sparse-checkout: common/tools/branch_test_builds.jq
+          sparse-checkout-cone-mode: false
+
+      - name: Remove them
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq "$(cat .workflows/common/tools/branch_test_builds.jq)" > "$RUNNER_TEMP/old"
+          while read -r old; do
+            echo "Removing $old"
+            if ! gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes; then
+              # Accepted only when a test build of the same branch removed it meanwhile.
+              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$old" --silent 2> "$RUNNER_TEMP/error" && exit 1
+              grep -q "HTTP 404" "$RUNNER_TEMP/error"
+            fi
+          done < "$RUNNER_TEMP/old"

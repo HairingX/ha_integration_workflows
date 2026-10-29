@@ -14,13 +14,13 @@ import yaml
 from library_contract import PYTHON_VERSIONS
 
 ROOT = Path(__file__).parents[1]
-TEMPLATES = [ROOT / "common/template", ROOT / "ha/template", ROOT / "python/template"]
+TEMPLATES = [ROOT / "common/template", ROOT / "ha/template", ROOT / "python/template", ROOT / "card/template"]
 CALLERS = sorted(path for template in TEMPLATES for path in (template / ".github/workflows").glob("*.yml"))
 WORKFLOWS = sorted([*(ROOT / ".github/workflows").glob("*.yml"), *CALLERS])
-ACTIONS = sorted([*(ROOT / "ha/actions").glob("*/action.yml"), *(ROOT / "python/actions").glob("*/action.yml")])
-BRANCH_TEST_BUILDS = ROOT / "ha" / "tools" / "branch_test_builds.jq"
+ACTIONS = sorted(path for kind in ("ha", "python", "card") for path in (ROOT / kind / "actions").glob("*/action.yml"))
+BRANCH_TEST_BUILDS = ROOT / "common" / "tools" / "branch_test_builds.jq"
 OWN = re.compile(r"uses: HairingX/workflows/([^@\s]+)@(\S+)")
-KINDS = ["ha", "python"]
+KINDS = ["ha", "python", "card"]
 MAJOR = "v2"
 """The major version the callers use, which Publish moves."""
 
@@ -36,7 +36,7 @@ def _ids(paths: list[Path]) -> list[str]:
 
 def test_the_workflows_and_actions_are_found() -> None:
     assert len(WORKFLOWS) > 10
-    assert len(ACTIONS) == 4
+    assert len(ACTIONS) == 6
 
 
 @pytest.mark.parametrize("workflow", WORKFLOWS, ids=_ids(WORKFLOWS))
@@ -192,3 +192,63 @@ def test_the_tests_install_a_libraries_branch_in_place_of_its_pin(action: Path) 
     assert '"$common/libraries.py" requirements "$requirements"' in script
     assert "-r requirements-test.txt" not in script
     assert script.index('libraries.py" requirements') < script.index('-r "$requirements"')
+
+
+def _workflow(name: str) -> dict[str, Any]:
+    return cast(dict[str, Any], yaml.safe_load((ROOT / ".github/workflows" / name).read_text("utf-8")))
+
+
+def _steps(job: dict[str, Any]) -> list[dict[str, Any]]:
+    return cast(list[dict[str, Any]], job["steps"])
+
+
+def test_the_shared_test_build_cleanup_does_what_the_integrations_does() -> None:
+    """The integrations call their own until the next major; the two must not drift apart."""
+    assert _workflow("test-build-cleanup.yml")["jobs"] == _workflow("ha-test-build-cleanup.yml")["jobs"]
+
+
+@pytest.mark.parametrize("workflow", ["card-release.yml", "card-test-build.yml"])
+def test_a_cards_packages_never_run_where_a_token_can_push(workflow: str) -> None:
+    """npm runs the install scripts of every package it installs."""
+    for name, job in cast(dict[str, dict[str, Any]], _workflow(workflow)["jobs"]).items():
+        runs = "\n".join(str(step.get("run", "")) for step in _steps(job))
+        uses = [str(step.get("uses", "")) for step in _steps(job)]
+        if "npm" in runs or any("card/actions/tests" in use for use in uses):
+            assert job["permissions"] == {"contents": "read"}, name
+            for step in _steps(job):
+                if str(step.get("uses", "")).startswith("actions/checkout@"):
+                    assert step["with"]["persist-credentials"] is False, name
+
+
+@pytest.mark.parametrize("workflow", ["card-release.yml", "card-test-build.yml"])
+def test_a_card_publishes_the_bundle_built_with_its_version_after_every_check(workflow: str) -> None:
+    jobs = cast(dict[str, dict[str, Any]], _workflow(workflow)["jobs"])
+    assert set(jobs["publish"]["needs"]) == {"prepare", "test", "hacs", "build"}
+    build = "\n".join(str(step.get("run", "")) for step in _steps(jobs["build"]))
+    assert 'CARD_VERSION="$VERSION" npm run build' in build
+    assert 'bundle.py" check . "$VERSION"' in build
+    assert jobs["build"]["env"]["VERSION"] == "${{ needs.prepare.outputs.version }}"
+    published = "\n".join(str(step.get("run", "")) for step in _steps(jobs["publish"]))
+    assert 'gh release create "$TAG" "$BUNDLE"' in published
+    assert 'gh release upload "$TAG" "$BUNDLE"' in published
+
+
+def test_the_cards_tests_hold_it_to_full_coverage_whatever_its_configuration() -> None:
+    script = (ROOT / "card/actions/tests/action.yml").read_text("utf-8")
+    assert "npm test -- --coverage.enabled=true --coverage.thresholds.100=true" in script
+    for step in ("npm ci", "npm run lint", "npm run typecheck", "npm run build", "card_contract.py", "check card ."):
+        assert step in script
+
+
+def test_hacs_validates_a_card_only_once_a_final_release_carries_it() -> None:
+    """HACS finds a card among the newest final release's assets; before one, validation fails."""
+    action = yaml.safe_load((ROOT / "card/actions/hacs/action.yml").read_text("utf-8"))
+    steps = cast(list[dict[str, Any]], action["runs"]["steps"])
+    assert "releases/latest" in steps[0]["run"]
+    validations = [step for step in steps if str(step.get("uses", "")).startswith("hacs/action@")]
+    assert len(validations) == 2
+    for step in validations:
+        assert step["with"] == {"category": "plugin"}
+        assert "steps.released.outputs.found == 'true'" in step["if"]
+    # An empty REPOSITORY_REF names no ref, so it is set only when a commit is given.
+    assert [step.get("env") for step in validations] == [None, {"REPOSITORY_REF": "${{ inputs.ref }}"}]

@@ -7,9 +7,11 @@ updates:
       - /
       - /ha/actions/*
       - /python/actions/*
+      - /card/actions/*
       - /common/template
       - /ha/template
       - /python/template
+      - /card/template
     schedule:
       interval: weekly
     labels:
